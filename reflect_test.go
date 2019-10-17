@@ -15,4 +15,16 @@ func TestReplaceFuncVar(t *testing.T) {
 
 	result := f()
 	assert.Assert(t, result == 30)
+
+	var s struct {
+		F func() int
+		I int
+	}
+
+	ReplaceFuncVar(&s.F, func([]reflect.Value) []reflect.Value {
+		return []reflect.Value{reflect.ValueOf(40)}
+	})
+
+	result = s.F()
+	assert.Assert(t, result == 40)
 }
