@@ -12,3 +12,12 @@ func ReplaceFuncVar(funcVarPtr interface{}, fn func(in []reflect.Value) (out []r
 	e := v.Elem()
 	e.Set(reflect.MakeFunc(e.Type(), fn))
 }
+
+// Func2Value wraps a func with reflect.Value
+func Func2Value(fun interface{}) reflect.Value {
+	v := reflect.ValueOf(fun)
+	if v.Kind() != reflect.Func {
+		panic("fun must be a func")
+	}
+	return v
+}
