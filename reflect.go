@@ -56,7 +56,12 @@ func FuncOutputTypes(fun interface{}) (result []reflect.Type) {
 	return
 }
 
-// TypeByTypePointer for retrieve reflect.Type by a pointer value
-func TypeByTypePointer(tp interface{}) reflect.Type {
+// TypeByPointer for retrieve reflect.Type by a pointer value
+func TypeByPointer(tp interface{}) reflect.Type {
 	return reflect.TypeOf(tp).Elem()
+}
+
+// InstanceByType returns a instance of reflect.Type wrapped in interface{}
+func InstanceByType(t reflect.Type) interface{} {
+	return reflect.New(t).Elem().Interface()
 }
