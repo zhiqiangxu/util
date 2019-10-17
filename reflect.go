@@ -1,6 +1,8 @@
 package util
 
-import "reflect"
+import (
+	"reflect"
+)
 
 // ReplaceFuncVar for replace funcVar with fn
 func ReplaceFuncVar(funcVarPtr interface{}, fn func(in []reflect.Value) (out []reflect.Value)) {
@@ -52,4 +54,9 @@ func FuncOutputTypes(fun interface{}) (result []reflect.Type) {
 	}
 
 	return
+}
+
+// TypeByTypePointer for retrieve reflect.Type by a pointer value
+func TypeByTypePointer(tp interface{}) reflect.Type {
+	return reflect.TypeOf(tp).Elem()
 }

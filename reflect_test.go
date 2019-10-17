@@ -37,6 +37,9 @@ func TestReflect(t *testing.T) {
 
 	outTypes := FuncOutputTypes(testTarget)
 	assert.Assert(t, len(outTypes) == 1 && outTypes[0].Kind() == reflect.Slice)
+
+	stringType := TypeByTypePointer((*string)(nil))
+	assert.Assert(t, stringType == reflect.ValueOf("").Type())
 }
 
 func testTarget(int, string) []int {
