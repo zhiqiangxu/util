@@ -31,4 +31,14 @@ func TestReflect(t *testing.T) {
 	vf := Func2Value(f)
 	ret := vf.Call(nil)
 	assert.Assert(t, ret[0].Interface().(int) == 30)
+
+	inTypes := FuncInputTypes(testTarget)
+	assert.Assert(t, len(inTypes) == 2 && inTypes[0].Kind() == reflect.Int && inTypes[1].Kind() == reflect.String)
+
+	outTypes := FuncOutputTypes(testTarget)
+	assert.Assert(t, len(outTypes) == 1 && outTypes[0].Kind() == reflect.Slice)
+}
+
+func testTarget(int, string) []int {
+	return nil
 }

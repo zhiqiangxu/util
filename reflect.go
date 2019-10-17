@@ -21,3 +21,35 @@ func Func2Value(fun interface{}) reflect.Value {
 	}
 	return v
 }
+
+// FuncInputTypes for retrieve func input types
+func FuncInputTypes(fun interface{}) (result []reflect.Type) {
+	fv := reflect.ValueOf(fun)
+	if fv.Kind() != reflect.Func {
+		panic("fun must be a func")
+	}
+
+	tp := fv.Type()
+	n := tp.NumIn()
+	for i := 0; i < n; i++ {
+		result = append(result, tp.In(i))
+	}
+
+	return
+}
+
+// FuncOutputTypes for retrieve func output types
+func FuncOutputTypes(fun interface{}) (result []reflect.Type) {
+	fv := reflect.ValueOf(fun)
+	if fv.Kind() != reflect.Func {
+		panic("fun must be a func")
+	}
+
+	tp := fv.Type()
+	n := tp.NumOut()
+	for i := 0; i < n; i++ {
+		result = append(result, tp.Out(i))
+	}
+
+	return
+}
