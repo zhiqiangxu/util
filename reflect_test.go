@@ -44,6 +44,13 @@ func TestReflect(t *testing.T) {
 	result = s.F()
 	assert.Assert(t, result == 41)
 
+	sfields := StructFields(s, func(field reflect.Value) bool {
+		return field.Kind() == reflect.Int
+	})
+	assert.Assert(t, len(sfields) == 1)
+	sfields[0].Set(reflect.ValueOf(20))
+	assert.Assert(t, s.I == 20)
+
 	vf := Func2Value(f)
 	ret := vf.Call(nil)
 	assert.Assert(t, ret[0].Interface().(int) == 31)

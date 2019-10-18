@@ -71,3 +71,21 @@ func TypeByPointer(tp interface{}) reflect.Type {
 func InstanceByType(t reflect.Type) interface{} {
 	return reflect.New(t).Elem().Interface()
 }
+
+// StructFields for filter fields in struct
+func StructFields(s interface{}, filter func(f reflect.Value) bool) (fields []reflect.Value) {
+	v := reflect.ValueOf(s)
+	v = reflect.Indirect(v)
+
+	count := v.NumField()
+	for i := 0; i < count; i++ {
+		field := v.Field(i)
+		if filter == nil {
+			fields = append(fields, field)
+		} else if filter(field) {
+			fields = append(fields, field)
+		}
+	}
+
+	return
+}
