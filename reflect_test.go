@@ -24,10 +24,10 @@ func TestReflect(t *testing.T) {
 	result = f()
 	assert.Assert(t, result == 31)
 
-	var s struct {
+	s := &struct {
 		F func() int
 		I int
-	}
+	}{}
 
 	ReplaceFuncVar(&s.F, func([]reflect.Value) []reflect.Value {
 		return []reflect.Value{reflect.ValueOf(40)}
@@ -35,6 +35,14 @@ func TestReflect(t *testing.T) {
 
 	result = s.F()
 	assert.Assert(t, result == 40)
+
+	sv := reflect.ValueOf(s)
+	ReplaceFuncVar(reflect.Indirect(sv).Field(0), func([]reflect.Value) []reflect.Value {
+		return []reflect.Value{reflect.ValueOf(41)}
+	})
+
+	result = s.F()
+	assert.Assert(t, result == 41)
 
 	vf := Func2Value(f)
 	ret := vf.Call(nil)
