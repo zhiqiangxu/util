@@ -16,6 +16,14 @@ func TestReflect(t *testing.T) {
 	result := f()
 	assert.Assert(t, result == 30)
 
+	fv := reflect.ValueOf(&f)
+	ReplaceFuncVar(fv, func([]reflect.Value) []reflect.Value {
+		return []reflect.Value{reflect.ValueOf(31)}
+	})
+
+	result = f()
+	assert.Assert(t, result == 31)
+
 	var s struct {
 		F func() int
 		I int
@@ -30,7 +38,7 @@ func TestReflect(t *testing.T) {
 
 	vf := Func2Value(f)
 	ret := vf.Call(nil)
-	assert.Assert(t, ret[0].Interface().(int) == 30)
+	assert.Assert(t, ret[0].Interface().(int) == 31)
 
 	inTypes := FuncInputTypes(testTarget)
 	assert.Assert(t, len(inTypes) == 2 && inTypes[0].Kind() == reflect.Int && inTypes[1].Kind() == reflect.String)
