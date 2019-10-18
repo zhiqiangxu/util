@@ -105,15 +105,17 @@ func StructFields(s interface{}, filter func(name string, f reflect.Value) bool)
 }
 
 // ScanMethods for scan methods of s
-func ScanMethods(s interface{}) (methods []reflect.Value) {
+func ScanMethods(s interface{}) (methods map[string]reflect.Value) {
 	v, ok := s.(reflect.Value)
 	if !ok {
 		v = reflect.ValueOf(s)
 	}
 
+	methods = make(map[string]reflect.Value)
+	t := v.Type()
 	count := v.NumMethod()
 	for i := 0; i < count; i++ {
-		methods = append(methods, v.Method(i))
+		methods[t.Method(i).Name] = v.Method(i)
 	}
 
 	return
