@@ -32,7 +32,11 @@ func Func2Value(fun interface{}) reflect.Value {
 
 // FuncInputTypes for retrieve func input types
 func FuncInputTypes(fun interface{}) (result []reflect.Type) {
-	fv := reflect.ValueOf(fun)
+	fv, ok := fun.(reflect.Value)
+	if !ok {
+		fv = reflect.ValueOf(fun)
+	}
+
 	if fv.Kind() != reflect.Func {
 		panic("fun must be a func")
 	}
@@ -48,7 +52,11 @@ func FuncInputTypes(fun interface{}) (result []reflect.Type) {
 
 // FuncOutputTypes for retrieve func output types
 func FuncOutputTypes(fun interface{}) (result []reflect.Type) {
-	fv := reflect.ValueOf(fun)
+	fv, ok := fun.(reflect.Value)
+	if !ok {
+		fv = reflect.ValueOf(fun)
+	}
+
 	if fv.Kind() != reflect.Func {
 		panic("fun must be a func")
 	}
@@ -74,7 +82,10 @@ func InstanceByType(t reflect.Type) interface{} {
 
 // StructFields for filter fields in struct
 func StructFields(s interface{}, filter func(f reflect.Value) bool) (fields []reflect.Value) {
-	v := reflect.ValueOf(s)
+	v, ok := s.(reflect.Value)
+	if !ok {
+		v = reflect.ValueOf(s)
+	}
 	v = reflect.Indirect(v)
 
 	count := v.NumField()
