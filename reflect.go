@@ -100,3 +100,18 @@ func StructFields(s interface{}, filter func(f reflect.Value) bool) (fields []re
 
 	return
 }
+
+// ScanMethods for scan methods of s
+func ScanMethods(s interface{}) (methods []reflect.Value) {
+	v, ok := s.(reflect.Value)
+	if !ok {
+		v = reflect.ValueOf(s)
+	}
+
+	count := v.NumMethod()
+	for i := 0; i < count; i++ {
+		methods = append(methods, v.Method(i))
+	}
+
+	return
+}

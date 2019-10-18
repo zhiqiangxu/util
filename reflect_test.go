@@ -67,8 +67,22 @@ func TestReflect(t *testing.T) {
 	is := InstanceByType(stringType)
 	_, ok := is.(string)
 	assert.Assert(t, ok)
+
+	var t2 TestType
+	methods := ScanMethods(t2)
+	assert.Assert(t, len(methods) == 1)
 }
 
 func testTarget(int, string) []int {
 	return nil
+}
+
+type TestType int
+
+func (t TestType) M1() {
+
+}
+
+func (t TestType) m1() {
+
 }
