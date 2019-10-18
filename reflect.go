@@ -81,20 +81,23 @@ func InstanceByType(t reflect.Type) interface{} {
 }
 
 // StructFields for filter fields in struct
-func StructFields(s interface{}, filter func(f reflect.Value) bool) (fields []reflect.Value) {
+func StructFields(s interface{}, filter func(name string, f reflect.Value) bool) (fields map[string]reflect.Value) {
 	v, ok := s.(reflect.Value)
 	if !ok {
 		v = reflect.ValueOf(s)
 	}
 	v = reflect.Indirect(v)
 
+	fields = make(map[string]reflect.Value)
+	t := v.Type()
 	count := v.NumField()
 	for i := 0; i < count; i++ {
 		field := v.Field(i)
+		name := t.Field(i).Name
 		if filter == nil {
-			fields = append(fields, field)
-		} else if filter(field) {
-			fields = append(fields, field)
+			fields[name] = field
+		} else if filter(name, field) {
+			fields[name] = field
 		}
 	}
 
