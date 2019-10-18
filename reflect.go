@@ -12,11 +12,7 @@ func ReplaceFuncVar(funcVarPtr interface{}, fn func(in []reflect.Value) (out []r
 		v = reflect.ValueOf(funcVarPtr)
 	}
 
-	if v.Kind() != reflect.Ptr {
-		panic("funcVarPtr must be a pointer")
-	}
-
-	v = v.Elem()
+	v = reflect.Indirect(v)
 
 	if v.Kind() != reflect.Func {
 		panic("funcVarPtr must point to a func")
