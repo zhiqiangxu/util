@@ -70,19 +70,36 @@ func TestReflect(t *testing.T) {
 
 	var t2 TestType
 	methods := ScanMethods(t2)
-	assert.Assert(t, len(methods) == 1)
+	_, ok = methods["M1"]
+	assert.Assert(t, len(methods) == 1 && ok)
+
+	methods = ScanMethods(&t2)
+	_, ok = methods["M2"]
+	assert.Assert(t, len(methods) == 3 && ok, "%v %v", len(methods), ok)
 }
 
 func testTarget(int, string) []int {
 	return nil
 }
 
-type TestType int
+type TestType struct {
+	Base
+}
+
+type Base struct {
+}
 
 func (t TestType) M1() {
 
 }
 
 func (t TestType) m1() {
+
+}
+
+func (t *TestType) M2() {
+}
+
+func (b *Base) OK() {
 
 }
