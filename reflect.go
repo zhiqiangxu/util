@@ -80,6 +80,11 @@ func InstanceByType(t reflect.Type) interface{} {
 	return reflect.New(t).Elem().Interface()
 }
 
+// InstancePtrByType returns a pointer to instance
+func InstancePtrByType(t reflect.Type) interface{} {
+	return reflect.New(t).Interface()
+}
+
 // StructFields for filter fields in struct
 func StructFields(s interface{}, filter func(name string, f reflect.Value) bool) (fields map[string]reflect.Value) {
 	v, ok := s.(reflect.Value)

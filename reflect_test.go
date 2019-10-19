@@ -67,6 +67,9 @@ func TestReflect(t *testing.T) {
 	is := InstanceByType(stringType)
 	_, ok := is.(string)
 	assert.Assert(t, ok)
+	isPtr := InstancePtrByType(stringType)
+	_, ok = isPtr.(*string)
+	assert.Assert(t, ok)
 
 	var t2 TestType
 	methods := ScanMethods(t2)
