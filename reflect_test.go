@@ -76,6 +76,14 @@ func TestReflect(t *testing.T) {
 	methods = ScanMethods(&t2)
 	_, ok = methods["M2"]
 	assert.Assert(t, len(methods) == 3 && ok, "%v %v", len(methods), ok)
+
+	var itf interface{}
+	itf = t2
+	_, ok = itf.(interface{ M2() })
+	assert.Assert(t, !ok)
+	itf = &t2
+	_, ok = itf.(interface{ M2() })
+	assert.Assert(t, ok)
 }
 
 func testTarget(int, string) []int {
