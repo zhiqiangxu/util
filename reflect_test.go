@@ -85,9 +85,10 @@ func TestReflect(t *testing.T) {
 		sv := reflect.ValueOf(s)
 		sptr := InstancePtrByClone(sv)
 		sp, ok := sptr.(*string)
-		assert.Assert(t, ok)
+		assert.Assert(t, ok && *sp == "abc")
 		*sp = "def"
-		assert.Assert(t, s == "abc")
+		sp, ok = sptr.(*string)
+		assert.Assert(t, s == "abc" && ok && *sp == "def")
 	}
 
 	var itf interface{}
