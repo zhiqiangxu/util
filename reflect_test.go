@@ -84,6 +84,9 @@ func TestReflect(t *testing.T) {
 	itf = t2
 	_, ok = itf.(interface{ M2() })
 	assert.Assert(t, !ok)
+	itf = &itf
+	_, ok = itf.(interface{ M2() })
+	assert.Assert(t, !ok)
 	itf = &t2
 	_, ok = itf.(interface{ M2() })
 	assert.Assert(t, ok)
