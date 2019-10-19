@@ -80,6 +80,16 @@ func TestReflect(t *testing.T) {
 	_, ok = methods["M2"]
 	assert.Assert(t, len(methods) == 3 && ok, "%v %v", len(methods), ok)
 
+	{
+		s := "abc"
+		sv := reflect.ValueOf(s)
+		sptr := InstancePtrByClone(sv)
+		sp, ok := sptr.(*string)
+		assert.Assert(t, ok)
+		*sp = "def"
+		assert.Assert(t, s == "abc")
+	}
+
 	var itf interface{}
 	itf = t2
 	_, ok = itf.(interface{ M2() })

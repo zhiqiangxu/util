@@ -85,6 +85,13 @@ func InstancePtrByType(t reflect.Type) interface{} {
 	return reflect.New(t).Interface()
 }
 
+// InstancePtrByClone creates an instance ptr by clone
+func InstancePtrByClone(v reflect.Value) interface{} {
+	cv := reflect.New(v.Type())
+	cv.Elem().Set(v)
+	return cv.Interface()
+}
+
 // StructFields for filter fields in struct
 func StructFields(s interface{}, filter func(name string, f reflect.Value) bool) (fields map[string]reflect.Value) {
 	v, ok := s.(reflect.Value)
