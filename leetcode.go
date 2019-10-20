@@ -11,12 +11,13 @@ func Max(a, b int) int {
 	return b
 }
 
-// MaxLengthOfUniqueSubslice returns the max length of unique sub slice
-func MaxLengthOfUniqueSubslice(s []byte) (l int) {
-	var i, j int
+// MaxLengthOfUniqueSubstring returns the max length of unique sub string
+func MaxLengthOfUniqueSubstring(s string) (l int) {
+
 	var indexes [math.MaxUint8] /*byte是uint8*/ int
 	n := len(s)
 
+	var i, j int
 	// 基于的观察：
 	// 如果s[j]跟[i,j)有重复j'，那么可以跳过[i,j']的元素，i直接变为j'+1
 	for ; j < n; j++ {

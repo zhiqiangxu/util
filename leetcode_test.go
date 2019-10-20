@@ -8,14 +8,14 @@ import (
 
 func TestMaxLengthOfUniqueSubslice(t *testing.T) {
 	{
-		s1 := []byte("abcdee")
+		s1 := "abcdee"
 
-		assert.Assert(t, MaxLengthOfUniqueSubslice(s1) == 5)
+		assert.Assert(t, MaxLengthOfUniqueSubstring(s1) == 5)
 	}
 
 	{
-		s2 := []byte("abcdaef")
+		s2 := "abcdaef"
 
-		assert.Assert(t, MaxLengthOfUniqueSubslice(s2) == 6)
+		assert.Assert(t, MaxLengthOfUniqueSubstring(s2) == 6)
 	}
 }
