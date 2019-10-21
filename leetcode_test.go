@@ -32,4 +32,10 @@ func TestManacherFallback(t *testing.T) {
 	assert.Assert(t, ManacherWithFallback("babcd") == "bab")
 	assert.Assert(t, ManacherWithFallback("cbabcd") == "cbabc")
 	assert.Assert(t, ManacherWithFallback("cbaabcd") == "cbaabc")
+
+}
+
+func TestReverseDigits(t *testing.T) {
+	assert.Assert(t, ReverseDigits(123) == 321)
+	assert.Assert(t, ReverseDigits(-123) == -321)
 }

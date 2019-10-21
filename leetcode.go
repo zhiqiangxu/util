@@ -152,3 +152,35 @@ func ManacherWithFallback(s string) (ss string) {
 
 	return
 }
+
+// ReverseDigits for reverse digits
+func ReverseDigits(n int32) (r int32) {
+
+	if n > 0 {
+		for n != 0 {
+			pop := n % 10
+			// 溢出判断
+			if (r > math.MaxInt32/10) || (r == math.MaxInt32/10 && pop > 7) {
+				// 上溢出
+				return 0
+			}
+
+			r = 10*r + pop
+			n /= 10
+		}
+	} else {
+		for n != 0 {
+			pop := n % 10
+			// 溢出判断
+			if r < math.MinInt32/10 || (r == math.MinInt32/10 && pop < -8) {
+				// 下溢出
+				return 0
+			}
+
+			r = 10*r + pop
+			n /= 10
+		}
+	}
+
+	return
+}
