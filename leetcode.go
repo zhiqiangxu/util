@@ -184,3 +184,19 @@ func ReverseDigits(n int32) (r int32) {
 
 	return
 }
+
+// IsPalindrome checks whether n is palindrome
+func IsPalindrome(n int) bool {
+	if n < 0 {
+		return false
+	}
+
+	var reverted int
+	// 反转一半即可
+	for n > reverted {
+		reverted = 10*reverted + n%10
+		n /= 10
+	}
+
+	return reverted == n || reverted/10 == n
+}

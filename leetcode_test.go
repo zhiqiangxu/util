@@ -39,3 +39,9 @@ func TestReverseDigits(t *testing.T) {
 	assert.Assert(t, ReverseDigits(123) == 321)
 	assert.Assert(t, ReverseDigits(-123) == -321)
 }
+
+func TestIsPalindrome(t *testing.T) {
+	assert.Assert(t, IsPalindrome(121))
+	assert.Assert(t, IsPalindrome(1122332211))
+	assert.Assert(t, !IsPalindrome(123))
+}
