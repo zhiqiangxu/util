@@ -81,3 +81,8 @@ func TestPatternMatchAllBU(t *testing.T) {
 	assert.Assert(t, !PatternMatchAllBU("mississippi", "mis*is*p*."))
 	assert.Assert(t, PatternMatchAllBU("", ".*a*"))
 }
+
+func TestFindOnceNum(t *testing.T) {
+	assert.Assert(t, FindOnceNum([]int{102, 101, 102}) == 101)
+	assert.Assert(t, FindOnceNum([]int{999, 999, 102}) == 102)
+}

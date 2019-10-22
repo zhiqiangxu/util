@@ -365,3 +365,12 @@ func PatternMatchAllRec(s, p string) bool {
 	return match && PatternMatchAllRec(s[1:], p[1:])
 
 }
+
+// FindOnceNum find the number that appears only once
+// caller should make sure only one num appears once
+func FindOnceNum(nums []int) (r int) {
+	for _, n := range nums {
+		r ^= n
+	}
+	return
+}
