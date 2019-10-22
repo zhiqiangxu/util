@@ -44,6 +44,7 @@ func TestIsPalindrome(t *testing.T) {
 	assert.Assert(t, IsPalindrome(121))
 	assert.Assert(t, IsPalindrome(1122332211))
 	assert.Assert(t, !IsPalindrome(123))
+	assert.Assert(t, IsPalindrome(0))
 }
 
 func TestPatternMatchAllRec(t *testing.T) {
