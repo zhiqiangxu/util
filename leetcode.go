@@ -200,3 +200,168 @@ func IsPalindrome(n int) bool {
 
 	return reverted == n || reverted/10 == n
 }
+
+// PatternMatchAllTD matches p against the whole s
+// pattern supprts . and *
+// top down
+func PatternMatchAllTD(s, p string) bool {
+
+	slen := len(s)
+	plen := len(p)
+	if plen == 0 {
+		return slen == 0
+	}
+
+	memo := make([][]*bool, slen)
+	for i := 0; i < slen; i++ {
+		memo[i] = make([]*bool, plen)
+	}
+
+	var subProbFunc func(i, j int) bool
+	// 子问题函数
+	subProbFunc = func(i, j int) bool {
+
+		// 如果都越界，匹配成功
+		if i >= slen && j >= plen {
+			return true
+		}
+		// 只有p越界，匹配失败
+		if j >= plen {
+			return false
+		}
+		// i越界，p未越界
+		if i >= slen {
+			// 看p能否匹配空
+			if j+1 >= plen {
+				return false
+			}
+			if p[j+1] != '*' {
+				return false
+			}
+			return subProbFunc(i, j+2)
+		}
+
+		// 如果已计算，直接返回结果
+		if memo[i][j] != nil {
+			return *memo[i][j]
+		}
+
+		match := s[i] == p[j] || p[j] == '.'
+		if j+1 >= plen {
+			result := match && i == slen-1
+			memo[i][j] = &result
+			return result
+		}
+
+		// 转移方程
+
+		if p[j+1] == '*' {
+			result := subProbFunc(i, j+2) || // 匹配0次
+				(match && subProbFunc(i+1, j+2)) || // 匹配1次
+				(match && subProbFunc(i+1, j)) // 匹配多次
+
+			memo[i][j] = &result
+			return result
+		}
+
+		result := match && subProbFunc(i+1, j+1)
+		memo[i][j] = &result
+
+		return result
+	}
+
+	return subProbFunc(0, 0)
+}
+
+// PatternMatchAllBU matches p against the whole s
+// pattern supprts . and *
+// bottom up
+func PatternMatchAllBU(s, p string) bool {
+
+	slen := len(s)
+	plen := len(p)
+	if plen == 0 {
+		return slen == 0
+	}
+
+	memo := make([][]*bool, slen)
+	for i := 0; i < slen; i++ {
+		memo[i] = make([]*bool, plen)
+	}
+
+	var subProbFunc func(i, j int) bool
+	subProbFunc = func(i, j int) bool {
+		if i < 0 && j < 0 {
+			return true
+		}
+		if j < 0 {
+			return false
+		}
+		if i < 0 {
+			// 看p能否匹配空
+			if p[j] != '*' {
+				return false
+			}
+			if j == 0 {
+				return false
+			}
+			return subProbFunc(i, j-2)
+		}
+
+		// 如果已计算，直接返回结果
+		if memo[i][j] != nil {
+			return *memo[i][j]
+		}
+
+		match := s[i] == p[j] || p[j] == '.'
+		if j == 0 {
+			result := match && i == 0
+			memo[i][j] = &result
+			return result
+		}
+
+		if p[j] == '*' {
+			result := subProbFunc(i, j-2) || /*匹配0次*/
+				((p[j-1] == s[i] || p[j-1] == '.') &&
+					(subProbFunc(i-1, j-2) || /*匹配1次*/
+						subProbFunc(i-1, j))) /*匹配多次*/
+			memo[i][j] = &result
+			return result
+		}
+
+		result := match && subProbFunc(i-1, j-1)
+		memo[i][j] = &result
+		return result
+	}
+
+	return subProbFunc(slen-1, plen-1)
+}
+
+// PatternMatchAllRec is the recursive version for PatternMatchAll
+func PatternMatchAllRec(s, p string) bool {
+	if len(p) == 0 {
+		return len(s) == 0
+	}
+
+	if len(s) == 0 {
+		// p必须是x*y*这种
+		if len(p) < 2 || p[1] != '*' {
+			return false
+		}
+		return PatternMatchAllRec(s, p[2:])
+	}
+
+	match := s[0] == p[0] || p[0] == '.'
+	if len(p) < 2 {
+		return match && len(s) == 1
+	}
+
+	if p[1] == '*' {
+		return PatternMatchAllRec(s, p[2:]) /*匹配0次*/ ||
+			(match && PatternMatchAllRec(s[1:], p[2:])) /*匹配1次*/ ||
+			(match && PatternMatchAllRec(s[1:], p)) /*匹配多次*/
+	}
+
+	return match && PatternMatchAllRec(s[1:], p[1:])
+
+}

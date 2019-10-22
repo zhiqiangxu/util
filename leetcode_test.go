@@ -45,3 +45,38 @@ func TestIsPalindrome(t *testing.T) {
 	assert.Assert(t, IsPalindrome(1122332211))
 	assert.Assert(t, !IsPalindrome(123))
 }
+
+func TestPatternMatchAllRec(t *testing.T) {
+	assert.Assert(t, !PatternMatchAllRec("ss", "s"))
+	assert.Assert(t, PatternMatchAllRec("ss", "s*"))
+	assert.Assert(t, PatternMatchAllRec("ss", "s*s"))
+	assert.Assert(t, PatternMatchAllRec("ss", ".*s"))
+	assert.Assert(t, PatternMatchAllRec("ss", ".*"))
+	assert.Assert(t, PatternMatchAllRec("aab", "c*a*b"))
+	assert.Assert(t, !PatternMatchAllRec("mississippi", "mis*is*p*."))
+	assert.Assert(t, PatternMatchAllRec("", ".*"))
+	assert.Assert(t, PatternMatchAllRec("", ".*a*"))
+
+}
+
+func TestPatternMatchAllTD(t *testing.T) {
+	assert.Assert(t, !PatternMatchAllTD("ss", "s"))
+	assert.Assert(t, PatternMatchAllTD("ss", "s*"))
+	assert.Assert(t, PatternMatchAllTD("ss", "s*s"))
+	assert.Assert(t, PatternMatchAllTD("ss", ".*s"))
+	assert.Assert(t, PatternMatchAllTD("ss", ".*"))
+	assert.Assert(t, PatternMatchAllTD("aab", "c*a*b"))
+	assert.Assert(t, !PatternMatchAllTD("mississippi", "mis*is*p*."))
+	assert.Assert(t, PatternMatchAllTD("", ".*a*"))
+}
+
+func TestPatternMatchAllBU(t *testing.T) {
+	assert.Assert(t, !PatternMatchAllBU("ss", "s"))
+	assert.Assert(t, PatternMatchAllBU("ss", "s*"))
+	assert.Assert(t, PatternMatchAllBU("ss", "s*s"))
+	assert.Assert(t, PatternMatchAllBU("ss", ".*s"))
+	assert.Assert(t, PatternMatchAllBU("ss", ".*"))
+	assert.Assert(t, PatternMatchAllBU("aab", "c*a*b"))
+	assert.Assert(t, !PatternMatchAllBU("mississippi", "mis*is*p*."))
+	assert.Assert(t, PatternMatchAllBU("", ".*a*"))
+}
