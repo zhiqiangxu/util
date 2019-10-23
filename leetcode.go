@@ -427,3 +427,31 @@ func MinCoveringSubstr(s, t string) (ss string) {
 
 	return
 }
+
+// LongestConsecutive finds longest consecutive in nums
+func LongestConsecutive(nums []int) (sn, length int) {
+	numMap := make(map[int]struct{})
+	for _, n := range nums {
+		numMap[n] = struct{}{}
+	}
+
+	for _, n := range nums {
+		if _, ok := numMap[n-1]; ok {
+			continue
+		}
+		nn := n + 1
+		for {
+			if _, ok := numMap[nn]; ok {
+				nn++
+			} else {
+				if nn-n > length {
+					length = nn - n
+					sn = n
+				}
+				break
+			}
+		}
+	}
+
+	return
+}

@@ -92,3 +92,8 @@ func TestMinCoveringSubstr(t *testing.T) {
 	assert.Assert(t, MinCoveringSubstr("ADOBECODEBAC", "ABC") == "BAC")
 	assert.Assert(t, MinCoveringSubstr("", "ABC") == "")
 }
+
+func TestLongestConsecutive(t *testing.T) {
+	n, len := LongestConsecutive([]int{100, 4, 200, 1, 3, 2})
+	assert.Assert(t, n == 1 && len == 4)
+}
