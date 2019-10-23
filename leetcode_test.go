@@ -90,4 +90,5 @@ func TestFindOnceNum(t *testing.T) {
 func TestMinCoveringSubstr(t *testing.T) {
 	assert.Assert(t, MinCoveringSubstr("ADOBECODEBANC", "ABC") == "BANC")
 	assert.Assert(t, MinCoveringSubstr("ADOBECODEBAC", "ABC") == "BAC")
+	assert.Assert(t, MinCoveringSubstr("", "ABC") == "")
 }
