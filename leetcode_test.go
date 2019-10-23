@@ -86,3 +86,7 @@ func TestFindOnceNum(t *testing.T) {
 	assert.Assert(t, FindOnceNum([]int{102, 101, 102}) == 101)
 	assert.Assert(t, FindOnceNum([]int{999, 999, 102}) == 102)
 }
+
+func TestMinCoveringSubstr(t *testing.T) {
+	assert.Assert(t, MinCoveringSubstr("ADOBECODEBANC", "ABC") == "BANC")
+}

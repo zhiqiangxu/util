@@ -374,3 +374,56 @@ func FindOnceNum(nums []int) (r int) {
 	}
 	return
 }
+
+// MinCoveringSubstr finds min substr of s that covers t
+func MinCoveringSubstr(s, t string) (ss string) {
+
+	// 双指针滑动窗口
+	var left, right, matched int
+
+	needed := make(map[byte]int)
+	for i := 0; i < len(t); i++ {
+		needed[t[i]]++
+	}
+	windowed := make(map[byte]int)
+	minLen := len(s) + 1
+
+	for right < len(s) {
+
+		rb := s[right]
+		if _, ok := needed[rb]; ok {
+			windowed[rb]++
+			if windowed[rb] == needed[rb] {
+				matched++
+			}
+		}
+
+		if matched == len(needed) {
+			for {
+				lb := s[left]
+				if _, ok := needed[lb]; !ok {
+					left++
+					continue
+				}
+				if windowed[lb] > needed[lb] {
+					left++
+					windowed[lb]--
+					continue
+				}
+				// left不能再右了
+				if right-left+1 < minLen {
+					ss = s[left : right+1]
+					minLen = right - left + 1
+				}
+				left++
+				windowed[lb]--
+				matched--
+				break
+			}
+		}
+
+		right++
+	}
+
+	return
+}
