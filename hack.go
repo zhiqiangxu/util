@@ -1,4 +1,4 @@
-package qrpc
+package util
 
 import (
 	"reflect"
