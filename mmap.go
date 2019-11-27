@@ -56,3 +56,25 @@ func MSync(b []byte, length int, flags int) (err error) {
 
 	return
 }
+
+// MLock mmaped bytes
+func MLock(b []byte, length int) (err error) {
+	_, _, e1 := syscall.Syscall(syscall.SYS_MLOCK,
+		uintptr(unsafe.Pointer(&b[0])), uintptr(length), 0)
+	if e1 != 0 {
+		err = e1
+	}
+
+	return
+}
+
+// MUnlock mmaped bytes
+func MUnlock(b []byte, length int) (err error) {
+	_, _, e1 := syscall.Syscall(syscall.SYS_MUNLOCK,
+		uintptr(unsafe.Pointer(&b[0])), uintptr(length), 0)
+	if e1 != 0 {
+		err = e1
+	}
+
+	return
+}

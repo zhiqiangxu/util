@@ -26,6 +26,8 @@ func TestMmap(t *testing.T) {
 	assert.Assert(t, err == nil && len(bytes) == size)
 	bytes[0] = 1
 	assert.Assert(t, MSync(bytes, 1, syscall.MS_SYNC) == nil)
+	assert.Assert(t, MLock(bytes, 1) == nil)
+	assert.Assert(t, MUnlock(bytes, 1) == nil)
 	err = Madvise(bytes, true)
 	assert.Assert(t, err == nil)
 	err = Madvise(bytes, false)
