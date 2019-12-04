@@ -3,9 +3,12 @@ module github.com/zhiqiangxu/util
 go 1.12
 
 require (
-	github.com/go-kit/kit v0.9.0 // indirect
+	github.com/go-kit/kit v0.9.0
 	github.com/google/go-cmp v0.3.1 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/oklog/run v1.0.0 // indirect
+	github.com/prometheus/client_golang v1.2.1
 	github.com/zhiqiangxu/go-reuseport v0.2.1 // indirect
 	github.com/zhiqiangxu/qrpc v0.0.0-20191121085610-3b68b3e2b8bd
 	go.uber.org/ratelimit v0.1.0 // indirect

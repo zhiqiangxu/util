@@ -91,7 +91,7 @@ func RegisterHist(name string, labels []string) kitmetrics.Histogram {
 		panic("registered the same gauge twice")
 	}
 
-	hist = kitprometheus.NewSummaryFrom(stdprometheus.SummaryOpts{Name: name}, labels)
+	hist = kitprometheus.NewSummaryFrom(stdprometheus.SummaryOpts{Name: name, Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}}, labels)
 	histMap[name] = hist
 	return hist
 }
