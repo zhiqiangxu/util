@@ -47,7 +47,7 @@ func madvise(b []byte, advice int) (err error) {
 }
 
 // MSync for flush mmaped bytes
-func MSync(b []byte, length int, flags int) (err error) {
+func MSync(b []byte, length int64, flags int) (err error) {
 	_, _, e1 := syscall.Syscall(syscall.SYS_MSYNC,
 		uintptr(unsafe.Pointer(&b[0])), uintptr(length), uintptr(flags))
 	if e1 != 0 {

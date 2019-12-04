@@ -26,6 +26,7 @@ func TestMmap(t *testing.T) {
 	assert.Assert(t, err == nil && len(bytes) == size)
 	bytes[0] = 1
 	assert.Assert(t, MSync(bytes, 1, syscall.MS_SYNC) == nil)
+	assert.Assert(t, MSync(bytes, 1, syscall.MS_SYNC) == nil) // call twice is ok
 	assert.Assert(t, MLock(bytes, 1) == nil)
 	assert.Assert(t, MUnlock(bytes, 1) == nil)
 	err = Madvise(bytes, true)
@@ -36,6 +37,10 @@ func TestMmap(t *testing.T) {
 	assert.Assert(t, err == nil)
 	err = Madvise(bytes, false)
 	assert.Assert(t, err != nil)
+	err = Munmap(bytes)
+	assert.Assert(t, err != nil)
+
+	bytes = make([]byte, 10)
 	err = Munmap(bytes)
 	assert.Assert(t, err != nil)
 
