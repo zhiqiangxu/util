@@ -12,6 +12,20 @@ import (
 	"github.com/zhiqiangxu/util"
 )
 
+type fileInterface interface {
+	Flags() int
+	Resize(newSize int64) (err error)
+	Write(data []byte) (n int, err error)
+	Read(offset int64, data []byte) (n int, err error)
+	Commit() (err error)
+	Flush() (err error)
+	LastModified() (t time.Time, err error)
+	Close() (err error)
+	MappedBytes() []byte
+}
+
+var _ fileInterface = (*File)(nil)
+
 // File for mmaped file
 // Write/Resize should be called sequentially
 // Commit/Write is concurrent safe

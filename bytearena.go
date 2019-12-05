@@ -2,18 +2,23 @@ package util
 
 // ByteArena for reduce GC pressure
 type ByteArena struct {
-	alloc []byte
+	alloc             []byte
+	chunkAllocMinSize int
+	chunkAllocMaxSize int
 }
 
 // NewByteArena is ctor for ByteArena
-func NewByteArena() *ByteArena {
-	return &ByteArena{}
+func NewByteArena(chunkAllocMinSize, chunkAllocMaxSize int) *ByteArena {
+	return &ByteArena{chunkAllocMinSize: chunkAllocMinSize, chunkAllocMaxSize: chunkAllocMaxSize}
 }
 
 // AllocBytes for allocate bytes
 func (a *ByteArena) AllocBytes(n int) (bytes []byte) {
 	if cap(a.alloc)-len(a.alloc) < n {
-		a.reserve(n)
+		bytes = a.reserveOrAlloc(n)
+		if bytes != nil {
+			return
+		}
 	}
 
 	pos := len(a.alloc)
@@ -28,18 +33,19 @@ func (a *ByteArena) UnsafeReset() {
 	a.alloc = a.alloc[:0]
 }
 
-func (a *ByteArena) reserve(n int) {
-	const chunkAllocMinSize = 512
-	const chunkAllocMaxSize = 16384
+func (a *ByteArena) reserveOrAlloc(n int) (bytes []byte) {
 
 	allocSize := cap(a.alloc) * 2
-	if allocSize < chunkAllocMinSize {
-		allocSize = chunkAllocMinSize
-	} else if allocSize > chunkAllocMaxSize {
-		allocSize = chunkAllocMaxSize
+	if allocSize < a.chunkAllocMinSize {
+		allocSize = a.chunkAllocMinSize
+	} else if allocSize > a.chunkAllocMaxSize {
+		allocSize = a.chunkAllocMaxSize
 	}
-	if allocSize < n {
-		allocSize = n
+	if allocSize <= n {
+		bytes = make([]byte, 0, n)
+		return
 	}
+
 	a.alloc = make([]byte, 0, allocSize)
+	return
 }
