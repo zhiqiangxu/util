@@ -14,17 +14,20 @@ import (
 // File for mmaped file
 // mutation is not concurrent safe
 type File struct {
+
+	// 有些字段仅在可写时有意义，trade some memory for better locality
+	wrotePosition  int64
+	commitPosition int64 // 仅在有写缓冲的情况使用
+	writeBuffer    *bytes.Buffer
+	pool           *sync.Pool
+
+	mu       sync.RWMutex
 	fileSize int64
 	fileName string
 	fmap     []byte
 	file     *os.File
 	flags    int
 	wmm      bool
-	// trade some memory for better locality
-	wrotePosition  int64
-	commitPosition int64 // 仅在有写缓冲的情况使用
-	writeBuffer    *bytes.Buffer
-	pool           *sync.Pool
 }
 
 // OpenFile opens a mmaped file
@@ -66,7 +69,9 @@ var (
 	errReadBeyond      = errors.New("read beyond")
 )
 
+// init仅在构造函数中调用，所以不需要考虑并发
 func (f *File) init() (err error) {
+
 	f.file, err = os.OpenFile(f.fileName, f.flags, 0600)
 	if err != nil {
 		return
@@ -105,7 +110,7 @@ func (f *File) init() (err error) {
 
 	if f.flags&os.O_EXCL != 0 {
 		// 打开已有文件
-		atomic.StoreInt64(&f.wrotePosition, fileSize)
+		f.wrotePosition = fileSize
 		if f.writeBuffer != nil {
 			f.commitPosition = fileSize
 		}
@@ -116,6 +121,9 @@ func (f *File) init() (err error) {
 
 // Resize will do truncate and remmap
 func (f *File) Resize(newSize int64) (err error) {
+	f.mu.Lock()
+	defer f.mu.RUnlock()
+
 	err = f.file.Truncate(newSize)
 	if err != nil {
 		return
@@ -139,6 +147,9 @@ func (f *File) Resize(newSize int64) (err error) {
 	}
 
 	f.fileSize = newSize
+	if f.wrotePosition >= newSize {
+		f.wrotePosition = newSize - 1
+	}
 	return
 }
 
@@ -256,6 +267,9 @@ func (f *File) Flush() (err error) {
 
 // Read bytes from offset
 func (f *File) Read(offset int64, data []byte) (n int, err error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
 	readPosition := f.getReadPosition()
 	if offset > readPosition {
 		err = errReadBeyond
@@ -285,6 +299,11 @@ func (f *File) Close() (err error) {
 
 	f.finalize()
 	return
+}
+
+// MappedBytes should only be used for file that never resize
+func (f *File) MappedBytes() []byte {
+	return f.fmap
 }
 
 // return stuff to pools for write mode
