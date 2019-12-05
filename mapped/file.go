@@ -91,18 +91,34 @@ func (f *File) init() (err error) {
 		return
 	}
 
-	fileSize := stat.Size()
-
-	// 期望大小 > 实际大小，截取，只往大截取，防止数据丢失
-	if f.fileSize > fileSize {
-		// 截至期望大小，不会改变offset
+	// 此时f.fileSize的意义：
+	// 如果是新建，表示期望的大小
+	// 如果是打开已有文件，表示从哪里继续写
+	if f.flags&os.O_EXCL != 0 {
+		// 新建
 		err = f.file.Truncate(f.fileSize)
 		if err != nil {
 			return
 		}
 	} else {
-		// 期望大小 <= 实际大小，以实际大小为准
+		// 打开已有文件
+
+		fileSize := stat.Size()
+		offset := f.fileSize
+
+		// offset > 实际大小，写超
+		if offset > fileSize {
+			err = errWriteBeyond
+			return
+		}
+
+		// offset <= 实际大小，以实际大小为准
 		f.fileSize = fileSize
+
+		f.wrotePosition = offset
+		if f.writeBuffer != nil {
+			f.commitPosition = offset
+		}
 	}
 
 	f.fmap, err = util.Mmap(f.file, f.wmm, f.fileSize)
@@ -110,14 +126,6 @@ func (f *File) init() (err error) {
 		return
 	}
 
-	if f.flags&os.O_EXCL != 0 {
-		// 打开已有文件
-		f.wrotePosition = fileSize
-		if f.writeBuffer != nil {
-			f.commitPosition = fileSize
-		}
-
-	}
 	return
 }
 
@@ -219,24 +227,6 @@ func (f *File) doWrite(data []byte) (n int, err error) {
 
 }
 
-// WriteAt for write at specified offset
-func (f *File) WriteAt(offset int64, data []byte) (n int, err error) {
-	if f.wrotePosition != offset {
-		err = f.Commit()
-		if err != nil {
-			return
-		}
-
-		atomic.StoreInt64(&f.wrotePosition, offset)
-		if f.writeBuffer != nil {
-			atomic.StoreInt64(&f.commitPosition, offset)
-		}
-	}
-
-	n, err = f.Write(data)
-	return
-}
-
 // Commit buffer to os if any
 func (f *File) Commit() (err error) {
 	if f.writeBuffer == nil {
@@ -313,8 +303,11 @@ func (f *File) Close() (err error) {
 	return
 }
 
-// MappedBytes should only be used for file that never resize
+// MappedBytes is valid until next Resize
 func (f *File) MappedBytes() []byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	return f.fmap
 }
 
