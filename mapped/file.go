@@ -18,7 +18,7 @@ type fileInterface interface {
 	Write(data []byte) (n int, err error)
 	Read(offset int64, data []byte) (n int, err error)
 	Commit() (err error)
-	Flush() (err error)
+	Sync() (err error)
 	LastModified() (t time.Time, err error)
 	Close() (err error)
 	MappedBytes() []byte
@@ -141,6 +141,19 @@ func (f *File) init() (err error) {
 		return
 	}
 
+	return
+}
+
+// MLock for the whole file
+func (f *File) MLock() (err error) {
+	err = util.MLock(f.fmap, len(f.fmap))
+	return
+}
+
+// MUnlock for the whole file
+// The memory lock on an address range is automatically removed if the address range is unmapped via munmap(2).
+func (f *File) MUnlock() (err error) {
+	err = util.MUnlock(f.fmap, len(f.fmap))
 	return
 }
 
@@ -270,8 +283,8 @@ func (f *File) Commit() (err error) {
 	return
 }
 
-// Flush from os to disk
-func (f *File) Flush() (err error) {
+// Sync from os to disk
+func (f *File) Sync() (err error) {
 	if f.wmm {
 		err = util.MSync(f.fmap, 0, len(f.fmap))
 		return
