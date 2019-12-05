@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/zhiqiangxu/util"
 )
@@ -263,6 +264,16 @@ func (f *File) Flush() (err error) {
 	}
 
 	err = f.file.Sync()
+	return
+}
+
+// LastModified returns last modified time
+func (f *File) LastModified() (t time.Time, err error) {
+	stat, err := f.file.Stat()
+	if err != nil {
+		return
+	}
+	t = stat.ModTime()
 	return
 }
 
