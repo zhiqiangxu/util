@@ -12,10 +12,12 @@ import (
 )
 
 // File for mmaped file
-// mutation is not concurrent safe
+// Write/Resize should be called sequentially
+// Commit/Write is concurrent safe
 type File struct {
 
 	// 有些字段仅在可写时有意义，trade some memory for better locality
+	cwmu           sync.Mutex
 	wrotePosition  int64
 	commitPosition int64 // 仅在有写缓冲的情况使用
 	writeBuffer    *bytes.Buffer
@@ -195,7 +197,9 @@ func (f *File) doWrite(data []byte) (n int, err error) {
 
 	// 写缓冲区
 	if f.writeBuffer != nil {
+		f.cwmu.Lock()
 		n, err = f.writeBuffer.Write(data)
+		f.cwmu.Unlock()
 		f.addAndGetWrotePosition(int64(n))
 		return
 	}
@@ -235,7 +239,14 @@ func (f *File) WriteAt(offset int64, data []byte) (n int, err error) {
 
 // Commit buffer to os if any
 func (f *File) Commit() (err error) {
-	if f.writeBuffer == nil || f.writeBuffer.Len() == 0 {
+	if f.writeBuffer == nil {
+		return
+	}
+
+	f.cwmu.Lock()
+	defer f.cwmu.Unlock()
+
+	if f.writeBuffer.Len() == 0 {
 		return
 	}
 
@@ -281,6 +292,7 @@ func (f *File) Read(offset int64, data []byte) (n int, err error) {
 		readTo = readPosition
 	}
 	copy(data, f.fmap[offset:readTo+1])
+	n = int(readTo - offset + 1)
 
 	return
 }
