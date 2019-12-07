@@ -2,25 +2,28 @@ package diskqueue
 
 import (
 	"encoding/binary"
-	"fmt"
 	"sync"
 	"unsafe"
 
 	"os"
+	"path/filepath"
 
+	"github.com/zhiqiangxu/util/logger"
 	"github.com/zhiqiangxu/util/mapped"
+	"go.uber.org/zap"
 )
 
 type queueMetaInterface interface {
-	LoadOrCreate() error
-	NumFiles() uint32
+	Init() error
+	NumFiles() int
 	FileMeta(idx int) FileMeta
 	AddFile(f FileMeta)
-	UpdateFileTime(idx int, startTime, endTime uint64) error
-	UpdateFileEndOffset(idx int, endOffset uint64) error
+	UpdateFileStat(idx, n int, endOffset, endTime int64)
 	Sync() error
 	Close() error
 }
+
+var _ queueMetaInterface = (*queueMeta)(nil)
 
 const (
 	maxSizeForMeta = 1024 * 1024
@@ -28,29 +31,36 @@ const (
 
 // FileMeta for a single file
 type FileMeta struct {
-	StartOffset uint64
-	EndOffset   uint64
-	StartTime   uint64
-	EndTime     uint64
+	StartOffset int64
+	EndOffset   int64
+	StartTime   int64
+	EndTime     int64
+	MsgCount    uint64
 }
 
 type queueMeta struct {
 	mu          sync.RWMutex
-	path        string
+	conf        *Conf
 	mappedFile  *mapped.File
 	mappedBytes []byte
 }
 
 // NewQueueMeta is ctor for queueMeta
-func newQueueMeta(path string) *queueMeta {
-	return &queueMeta{path: path}
+func newQueueMeta(conf *Conf) *queueMeta {
+	return &queueMeta{conf: conf}
 }
 
-func (m *queueMeta) LoadOrCreate() (err error) {
-	if _, err := os.Stat(m.path); os.IsNotExist(err) {
-		m.mappedFile, err = mapped.CreateFile(m.path, maxSizeForMeta, true, nil)
+const (
+	metaFile = "qm"
+)
+
+// Init either load or creates the meta file
+func (m *queueMeta) Init() (err error) {
+	path := filepath.Join(m.conf.Directory, metaFile)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		m.mappedFile, err = mapped.CreateFile(path, maxSizeForMeta, true, nil)
 	} else {
-		m.mappedFile, err = mapped.OpenFile(m.path, maxSizeForMeta, os.O_RDWR, true, nil)
+		m.mappedFile, err = mapped.OpenFile(path, maxSizeForMeta, os.O_RDWR, true, nil)
 	}
 	if err != nil {
 		return
@@ -65,24 +75,30 @@ func (m *queueMeta) LoadOrCreate() (err error) {
 	return nil
 }
 
-func (m *queueMeta) NumFiles() uint32 {
+func (m *queueMeta) NumFiles() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return binary.BigEndian.Uint32(m.mappedBytes)
+	return int(binary.BigEndian.Uint32(m.mappedBytes))
 }
 
-func (m *queueMeta) FileMeta(idx int) FileMeta {
+func (m *queueMeta) FileMeta(idx int) (fm FileMeta) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	offset := 4 + int(unsafe.Sizeof(FileMeta{}))*idx
-	startOffset := binary.BigEndian.Uint64(m.mappedBytes[offset:])
-	endOffset := binary.BigEndian.Uint64(m.mappedBytes[offset+8:])
-	startTime := binary.BigEndian.Uint64(m.mappedBytes[offset+16:])
-	endTime := binary.BigEndian.Uint64(m.mappedBytes[offset+24:])
+	nFiles := int(binary.BigEndian.Uint32(m.mappedBytes))
+	if idx >= nFiles {
+		logger.Instance().Fatal("FileMeta idx over size", zap.Int("idx", idx), zap.Int("nFiles", nFiles))
+	}
 
-	return FileMeta{StartOffset: startOffset, EndOffset: endOffset, StartTime: startTime, EndTime: endTime}
+	offset := 4 + int(unsafe.Sizeof(FileMeta{}))*idx
+	startOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset:]))
+	endOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+8:]))
+	startTime := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+16:]))
+	endTime := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+24:]))
+
+	fm = FileMeta{StartOffset: startOffset, EndOffset: endOffset, StartTime: startTime, EndTime: endTime}
+	return
 }
 
 func (m *queueMeta) AddFile(f FileMeta) {
@@ -92,56 +108,44 @@ func (m *queueMeta) AddFile(f FileMeta) {
 	nFiles := binary.BigEndian.Uint32(m.mappedBytes)
 	binary.BigEndian.PutUint32(m.mappedBytes, nFiles+1)
 	offset := 4 + int(unsafe.Sizeof(FileMeta{}))*int(nFiles)
-	binary.BigEndian.PutUint64(m.mappedBytes[offset:], f.StartOffset)
-	binary.BigEndian.PutUint64(m.mappedBytes[offset+8:], f.EndOffset)
-	binary.BigEndian.PutUint64(m.mappedBytes[offset+16:], f.StartTime)
-	binary.BigEndian.PutUint64(m.mappedBytes[offset+24:], f.EndTime)
-}
-
-func (m *queueMeta) UpdateFileTime(idx int, startTime, endTime uint64) (err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	nFiles := binary.BigEndian.Uint32(m.mappedBytes)
-	if uint32(idx) >= nFiles {
-		err = fmt.Errorf("UpdateFileTime beyond idx:%d nFiles:%d", idx, nFiles)
-		return
-	}
-
-	offset := 4 + int(unsafe.Sizeof(FileMeta{}))*idx
-	os := binary.BigEndian.Uint64(m.mappedBytes[offset+16:])
-	oe := binary.BigEndian.Uint64(m.mappedBytes[offset+24:])
-
-	if startTime < os {
-		binary.BigEndian.PutUint64(m.mappedBytes[offset+16:], startTime)
-	}
-
-	if endTime > oe {
-		binary.BigEndian.PutUint64(m.mappedBytes[offset+24:], endTime)
-	}
-
-	return
+	binary.BigEndian.PutUint64(m.mappedBytes[offset:], uint64(f.StartOffset))
+	binary.BigEndian.PutUint64(m.mappedBytes[offset+8:], uint64(f.EndOffset))
+	binary.BigEndian.PutUint64(m.mappedBytes[offset+16:], uint64(f.StartTime))
+	binary.BigEndian.PutUint64(m.mappedBytes[offset+24:], uint64(f.EndTime))
 
 }
 
-func (m *queueMeta) UpdateFileEndOffset(idx int, endOffset uint64) (err error) {
+func (m *queueMeta) UpdateFileStat(idx, n int, endOffset, endTime int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	nFiles := binary.BigEndian.Uint32(m.mappedBytes)
-	if uint32(idx) >= nFiles {
-		err = fmt.Errorf("UpdateFileEndOffset beyond idx:%d nFiles:%d", idx, nFiles)
-		return
+	nFiles := int(binary.BigEndian.Uint32(m.mappedBytes))
+	if idx >= nFiles {
+		logger.Instance().Fatal("UpdateFileStat idx over size", zap.Int("idx", idx), zap.Int("nFiles", nFiles))
 	}
 
 	offset := 4 + int(unsafe.Sizeof(FileMeta{}))*idx
-	oe := binary.BigEndian.Uint64(m.mappedBytes[offset+8:])
+	endOffset0 := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+8:]))
+	startTime0 := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+16:]))
+	endTime0 := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+24:]))
+	msgCount0 := binary.BigEndian.Uint64(m.mappedBytes[offset+32:])
 
-	if endOffset > oe {
-		binary.BigEndian.PutUint64(m.mappedBytes[offset+8:], endOffset)
+	if endOffset > endOffset0 {
+		binary.BigEndian.PutUint64(m.mappedBytes[offset+8:], uint64(endOffset))
 	}
 
+	if endTime < startTime0 {
+		binary.BigEndian.PutUint64(m.mappedBytes[offset+16:], uint64(endTime))
+	}
+
+	if endTime > endTime0 {
+		binary.BigEndian.PutUint64(m.mappedBytes[offset+24:], uint64(endTime))
+	}
+
+	binary.BigEndian.PutUint64(m.mappedBytes[offset+32:], msgCount0+1)
+
 	return
+
 }
 
 func (m *queueMeta) Sync() error {

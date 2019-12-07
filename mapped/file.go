@@ -3,6 +3,7 @@ package mapped
 import (
 	"bytes"
 	"errors"
+	"net"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -10,14 +11,22 @@ import (
 	"time"
 
 	"github.com/zhiqiangxu/util"
+	"github.com/zhiqiangxu/util/logger"
+	"go.uber.org/zap"
 )
 
 type fileInterface interface {
 	Flags() int
 	Resize(newSize int64) (err error)
 	Write(data []byte) (n int, err error)
+	writeBuffers(*net.Buffers) (int64, error)
+	WrotePositionNonAtomic() int64
 	Read(offset int64, data []byte) (n int, err error)
-	Commit() (err error)
+	Commit()
+	MLock() (err error)
+	MUnlock() (err error)
+	IsFull() bool
+	Shrink() (err error)
 	Sync() (err error)
 	LastModified() (t time.Time, err error)
 	Close() (err error)
@@ -82,8 +91,9 @@ func (f *File) Flags() int {
 
 var (
 	errPoolForReadonly = errors.New("pool for readonly file")
-	errWriteBeyond     = errors.New("write beyond")
-	errReadBeyond      = errors.New("read beyond")
+	// ErrWriteBeyond when write beyond
+	ErrWriteBeyond = errors.New("write beyond")
+	errReadBeyond  = errors.New("read beyond")
 )
 
 // init仅在构造函数中调用，所以不需要考虑并发
@@ -123,7 +133,7 @@ func (f *File) init() (err error) {
 
 		// offset > 实际大小，写超
 		if offset > fileSize {
-			err = errWriteBeyond
+			err = ErrWriteBeyond
 			return
 		}
 
@@ -157,10 +167,19 @@ func (f *File) MUnlock() (err error) {
 	return
 }
 
+// IsFull tells whether file is full
+func (f *File) IsFull() bool {
+	return f.wrotePosition >= f.fileSize
+}
+
 // Resize will do truncate and remmap
 func (f *File) Resize(newSize int64) (err error) {
 	f.mu.Lock()
 	defer f.mu.RUnlock()
+
+	if f.fileSize == newSize {
+		return
+	}
 
 	err = f.file.Truncate(newSize)
 	if err != nil {
@@ -185,10 +204,15 @@ func (f *File) Resize(newSize int64) (err error) {
 	}
 
 	f.fileSize = newSize
-	if f.wrotePosition >= newSize {
-		f.wrotePosition = newSize - 1
+	if f.wrotePosition > newSize {
+		f.wrotePosition = newSize
 	}
 	return
+}
+
+// WrotePositionNonAtomic for writing side
+func (f *File) WrotePositionNonAtomic() int64 {
+	return f.wrotePosition
 }
 
 func (f *File) getWrotePosition() int64 {
@@ -221,11 +245,51 @@ func (f *File) addAndGetCommitPosition(n int64) (new int64) {
 
 func (f *File) Write(data []byte) (n int, err error) {
 	if f.wrotePosition+int64(len(data)) > f.fileSize {
-		err = errWriteBeyond
+		err = ErrWriteBeyond
 		return
 	}
 
 	n, err = f.doWrite(data)
+	return
+}
+
+func (f *File) writeBuffers(buffs *net.Buffers) (n int64, err error) {
+	total := 0
+	for _, buf := range *buffs {
+		total += len(buf)
+	}
+
+	if f.wrotePosition+int64(total) > f.fileSize {
+		err = ErrWriteBeyond
+		return
+	}
+
+	if f.writeBuffer != nil {
+		f.cwmu.Lock()
+		n, err = buffs.WriteTo(f.writeBuffer)
+		f.cwmu.Unlock()
+		f.addAndGetWrotePosition(n)
+
+		return
+	}
+
+	// 写共享内存
+	if f.wmm {
+		for _, buf := range *buffs {
+			copy(f.fmap[f.wrotePosition:], buf)
+			n += int64(len(buf))
+			f.addAndGetWrotePosition(n)
+		}
+		nbuf := len(*buffs)
+		*buffs = (*buffs)[nbuf-1:]
+
+		return
+	}
+
+	// 写文件
+	n, err = buffs.WriteTo(f.file)
+	f.addAndGetWrotePosition(n)
+
 	return
 }
 
@@ -256,7 +320,7 @@ func (f *File) doWrite(data []byte) (n int, err error) {
 }
 
 // Commit buffer to os if any
-func (f *File) Commit() (err error) {
+func (f *File) Commit() {
 	if f.writeBuffer == nil {
 		return
 	}
@@ -268,18 +332,35 @@ func (f *File) Commit() (err error) {
 		return
 	}
 
+	n := int64(f.writeBuffer.Len())
 	// 从缓冲区到共享内存或者文件
 
 	if f.wmm {
 		copy(f.fmap[f.commitPosition:], f.writeBuffer.Bytes())
-		f.addAndGetCommitPosition(int64(f.writeBuffer.Len()))
+		f.addAndGetCommitPosition(n)
 		f.writeBuffer.Reset()
 		return
 	}
 
-	n, err := f.writeBuffer.WriteTo(f.file)
+	util.TryUntilSuccess(func() bool {
+		_, err := f.writeBuffer.WriteTo(f.file)
+		if err != nil {
+			logger.Instance().Error("Commit WriteTo", zap.Error(err))
+			return false
+		}
+		return true
+	}, time.Second)
+
 	f.addAndGetCommitPosition(n)
 
+	return
+}
+
+// Shrink resize file to wrote position
+func (f *File) Shrink() (err error) {
+	f.Commit()
+
+	err = f.Resize(f.wrotePosition)
 	return
 }
 
