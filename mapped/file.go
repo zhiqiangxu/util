@@ -3,6 +3,7 @@ package mapped
 import (
 	"bytes"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"sync"
@@ -145,6 +146,12 @@ func (f *File) init() (err error) {
 		// offset <= 实际大小，以实际大小为准
 		f.fileSize = fileSize
 
+		if !f.wmm {
+			_, err = f.file.Seek(offset, io.SeekStart)
+			if err != nil {
+				return
+			}
+		}
 		f.wrotePosition = offset
 		if f.writeBuffer != nil {
 			f.commitPosition = offset

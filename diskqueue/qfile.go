@@ -51,7 +51,7 @@ func openQfile(q *Queue, idx int, isLatest bool) (qf *qfile, err error) {
 	if isLatest && q.conf.EnableWriteBuffer {
 		pool = &writerBufferPool
 	}
-	qf.mappedFile, err = mapped.OpenFile(qfilePath(fm.StartOffset, &q.conf), int64(fm.EndOffset-fm.StartOffset), os.O_RDWR, false, pool)
+	qf.mappedFile, err = mapped.OpenFile(qfilePath(fm.StartOffset, &q.conf), int64(fm.EndOffset-fm.StartOffset), os.O_RDWR, q.conf.WriteMmap, pool)
 	return
 }
 
@@ -67,7 +67,7 @@ func createQfile(q *Queue, idx int, startOffset int64) (qf *qfile, err error) {
 	if q.conf.EnableWriteBuffer {
 		pool = &writerBufferPool
 	}
-	qf.mappedFile, err = mapped.CreateFile(qfilePath(startOffset, &q.conf), qfileSize, false, pool)
+	qf.mappedFile, err = mapped.CreateFile(qfilePath(startOffset, &q.conf), qfileSize, q.conf.WriteMmap, pool)
 	if err != nil {
 		return
 	}
