@@ -22,6 +22,9 @@ type fileInterface interface {
 	writeBuffers(*net.Buffers) (int64, error)
 	GetWrotePosition() int64
 	Read(offset int64, data []byte) (n int, err error)
+	ReadRLocked(offset int64, data []byte) (n int, err error)
+	RLock()
+	RUnlock()
 	Commit()
 	ReturnWriteBuffer()
 	MLock() (err error)
@@ -403,10 +406,15 @@ func (f *File) LastModified() (t time.Time, err error) {
 }
 
 // Read bytes from offset
-func (f *File) Read(offset int64, data []byte) (n int, err error) {
+func (f *File) Read(offset int64, data []byte) (int, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
+	return f.ReadRLocked(offset, data)
+}
+
+// ReadRLocked when already holding the lock
+func (f *File) ReadRLocked(offset int64, data []byte) (n int, err error) {
 	readPosition := f.getReadPosition()
 	if offset > readPosition {
 		err = errReadBeyond
@@ -421,6 +429,16 @@ func (f *File) Read(offset int64, data []byte) (n int, err error) {
 	n = int(readTo - offset + 1)
 
 	return
+}
+
+// RLock for read
+func (f *File) RLock() {
+	f.mu.RLock()
+}
+
+// RUnlock for read
+func (f *File) RUnlock() {
+	f.mu.RUnlock()
 }
 
 // Close the mapped file

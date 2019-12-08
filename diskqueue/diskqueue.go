@@ -30,19 +30,19 @@ var _ queueInterface = (*Queue)(nil)
 
 // Queue for diskqueue
 type Queue struct {
-	putting    int32
-	closeState uint32
-	wg         sync.WaitGroup
-	meta       *queueMeta
-	conf       Conf
-	writeCh    chan *writeRequest
-	writeReqs  []*writeRequest
-	writeBuffs net.Buffers
-	sizeBuffs  []byte
-	doneCh     chan struct{}
-	flock      sync.RWMutex
-	files      []*qfile
-	byteArena  *util.ByteArena
+	putting       int32
+	closeState    uint32
+	wg            sync.WaitGroup
+	meta          *queueMeta
+	conf          Conf
+	writeCh       chan *writeRequest
+	writeReqs     []*writeRequest
+	writeBuffs    net.Buffers
+	sizeBuffs     []byte
+	doneCh        chan struct{}
+	flock         sync.RWMutex
+	files         []*qfile
+	syncByteArena *util.SyncByteArena
 }
 
 const (
@@ -50,6 +50,7 @@ const (
 	defaultMaxMsgSize         = 512 * 1024 * 1024
 	defaultMaxPutting         = 10000
 	defaultByteArenaChunkSize = 100 * 1024 * 1024
+	sizeLength                = 4
 )
 
 // New is ctor for Queue
@@ -67,7 +68,15 @@ func New(conf Conf) *Queue {
 		conf.ByteArenaChunkSize = defaultByteArenaChunkSize
 	}
 
-	q := &Queue{conf: conf, writeCh: make(chan *writeRequest, conf.WriteBatch), writeReqs: make([]*writeRequest, 0, conf.WriteBatch), writeBuffs: make(net.Buffers, 0, conf.WriteBatch*2), sizeBuffs: make([]byte, 4*conf.WriteBatch), doneCh: make(chan struct{}), byteArena: util.NewByteArena(conf.ByteArenaChunkSize, conf.ByteArenaChunkSize)}
+	q := &Queue{
+		conf:          conf,
+		writeCh:       make(chan *writeRequest, conf.WriteBatch),
+		writeReqs:     make([]*writeRequest, 0, conf.WriteBatch),
+		writeBuffs:    make(net.Buffers, 0, conf.WriteBatch*2),
+		sizeBuffs:     make([]byte, sizeLength*conf.WriteBatch),
+		doneCh:        make(chan struct{}),
+		syncByteArena: util.NewSyncByteArena(conf.ByteArenaChunkSize, conf.ByteArenaChunkSize),
+	}
 	q.meta = newQueueMeta(&q.conf)
 	return q
 }
@@ -202,7 +211,7 @@ func (q *Queue) handleWrite() {
 			writeBuffs := q.writeBuffs
 
 			util.TryUntilSuccess(func() bool {
-				wroteN, err = q.writeBuffs.WriteTo(qf)
+				wroteN, err = qf.writeBuffers(&q.writeBuffs)
 				totalN += wroteN
 				if err == mapped.ErrWriteBeyond {
 					// 写超了，需要新开文件
@@ -211,7 +220,7 @@ func (q *Queue) handleWrite() {
 						logger.Instance().Error("handleWrite createQfile", zap.Error(err))
 					} else {
 						qf = q.files[len(q.files)-1]
-						wroteN, err = q.writeBuffs.WriteTo(qf)
+						wroteN, err = qf.writeBuffers(&q.writeBuffs)
 						totalN += wroteN
 					}
 				}
@@ -238,7 +247,7 @@ func (q *Queue) handleWrite() {
 }
 
 func (q *Queue) getSizeBuf(i int) []byte {
-	return q.sizeBuffs[4*i : 4*i+4]
+	return q.sizeBuffs[4*i : 4*i+sizeLength]
 }
 
 func (q *Queue) updateSizeBuf(i int, size int) {
@@ -320,12 +329,7 @@ func (q *Queue) Read(offset int64) (data []byte, err error) {
 	qf := q.files[idx]
 	q.flock.RUnlock()
 
-	fileOffset := offset - qf.startOffset
-	if fileOffset < 0 {
-		logger.Instance().Fatal("negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
-	}
-
-	// qf.
+	data, err = qf.Read(offset)
 
 	return
 }

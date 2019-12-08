@@ -2,6 +2,7 @@ package diskqueue
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -19,7 +20,6 @@ type qfileInterface interface {
 	WrotePosition() int64
 	ReturnWriteBuffer()
 	Commit()
-	Write([]byte) (int, error)
 	Read(offset int64) ([]byte, error)
 	Sync() error
 	Close() error
@@ -99,12 +99,26 @@ func (qf *qfile) Commit() {
 	qf.mappedFile.Commit()
 }
 
-func (qf *qfile) Write(data []byte) (n int, err error) {
-	logger.Instance().Fatal("qfile.Write not supported")
-	return
-}
-
 func (qf *qfile) Read(offset int64) (data []byte, err error) {
+	fileOffset := offset - qf.startOffset
+	if fileOffset < 0 {
+		logger.Instance().Error("negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
+		err = errInvalidOffset
+		return
+	}
+
+	qf.mappedFile.RLock()
+	defer qf.mappedFile.RUnlock()
+
+	sizeBytes := qf.q.syncByteArena.AllocBytes(int(offset), sizeLength)
+	_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
+	if err != nil {
+		return
+	}
+
+	size := binary.BigEndian.Uint32(sizeBytes)
+	dataBytes := qf.q.syncByteArena.AllocBytes(int(offset), int(size))
+	_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
 	return
 }
 

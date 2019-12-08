@@ -11,4 +11,8 @@ func TestByteArena(t *testing.T) {
 	n := 10
 	bytes := a.AllocBytes(n)
 	assert.Assert(t, len(bytes) == n && cap(bytes) == n)
+
+	cp := 10
+	bytes = make([]byte, cp)
+	assert.Assert(t, cap(bytes) == cp && cap(bytes[5:]) == cp-5)
 }
