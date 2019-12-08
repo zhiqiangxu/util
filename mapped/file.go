@@ -286,8 +286,8 @@ func (f *File) writeBuffers(buffs *net.Buffers) (n int64, err error) {
 		for _, buf := range *buffs {
 			copy(f.fmap[f.wrotePosition:], buf)
 			n += int64(len(buf))
-			f.addAndGetWrotePosition(n)
 		}
+		f.addAndGetWrotePosition(n)
 		nbuf := len(*buffs)
 		*buffs = (*buffs)[nbuf-1:]
 
