@@ -8,11 +8,11 @@ import (
 )
 
 func TestQueue(t *testing.T) {
-	conf := Conf{Directory: "/tmp/dq", WriteMmap: false}
+	conf := Conf{Directory: "/tmp/dq", WriteMmap: true}
 	q, err := New(conf)
 	assert.Assert(t, err == nil)
 
-	testData := []byte("abc")
+	testData := []byte("abcd")
 
 	for i := 0; i < 1000; i++ {
 		offset, err := q.Put(testData)

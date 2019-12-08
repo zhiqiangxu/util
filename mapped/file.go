@@ -285,9 +285,9 @@ func (f *File) WriteBuffers(buffs *net.Buffers) (n int64, err error) {
 	// 写共享内存
 	if f.wmm {
 		for _, buf := range *buffs {
-			copy(f.fmap[f.wrotePosition:], buf)
+			copy(f.fmap[f.wrotePosition+n:], buf)
+			n += int64(len(buf))
 		}
-		n = int64(total)
 		f.addAndGetWrotePosition(n)
 		nbuf := len(*buffs)
 		*buffs = (*buffs)[nbuf-1:]
