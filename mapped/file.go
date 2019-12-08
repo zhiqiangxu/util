@@ -20,7 +20,7 @@ type fileInterface interface {
 	Flags() int
 	Resize(newSize int64) (err error)
 	Write(data []byte) (n int, err error)
-	writeBuffers(*net.Buffers) (int64, error)
+	WriteBuffers(*net.Buffers) (int64, error)
 	GetWrotePosition() int64
 	Read(offset int64, data []byte) (n int, err error)
 	ReadRLocked(offset int64, data []byte) (n int, err error)
@@ -261,7 +261,8 @@ func (f *File) Write(data []byte) (n int, err error) {
 	return
 }
 
-func (f *File) writeBuffers(buffs *net.Buffers) (n int64, err error) {
+// WriteBuffers for writev
+func (f *File) WriteBuffers(buffs *net.Buffers) (n int64, err error) {
 	total := 0
 	for _, buf := range *buffs {
 		total += len(buf)
@@ -285,8 +286,8 @@ func (f *File) writeBuffers(buffs *net.Buffers) (n int64, err error) {
 	if f.wmm {
 		for _, buf := range *buffs {
 			copy(f.fmap[f.wrotePosition:], buf)
-			n += int64(len(buf))
 		}
+		n = int64(total)
 		f.addAndGetWrotePosition(n)
 		nbuf := len(*buffs)
 		*buffs = (*buffs)[nbuf-1:]
