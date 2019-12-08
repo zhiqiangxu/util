@@ -8,7 +8,7 @@ import (
 )
 
 func TestQueue(t *testing.T) {
-	conf := Conf{Directory: "/tmp/dq", WriteMmap: true}
+	conf := Conf{Directory: "/tmp/dq", WriteMmap: false}
 	q, err := New(conf)
 	assert.Assert(t, err == nil)
 

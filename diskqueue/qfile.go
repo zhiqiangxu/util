@@ -82,9 +82,10 @@ func createQfile(q *Queue, idx int, startOffset int64) (qf *qfile, err error) {
 }
 
 func (qf *qfile) writeBuffers(buffs *net.Buffers) (n int64, err error) {
-	n, err = buffs.WriteTo(qf.mappedFile)
-
+	n, err = qf.mappedFile.WriteBuffers(buffs)
 	return
+	// n, err = buffs.WriteTo(qf.mappedFile)
+	// return
 }
 
 func (qf *qfile) WrotePosition() int64 {
