@@ -2,7 +2,6 @@ package diskqueue
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 
 	"gotest.tools/assert"
@@ -20,7 +19,7 @@ func TestQueue(t *testing.T) {
 		assert.Assert(t, err == nil)
 
 		readData, err := q.Read(offset)
-		fmt.Println(string(readData))
+		// fmt.Println(string(readData))
 		assert.Assert(t, err == nil && bytes.Equal(readData, testData), err)
 	}
 
