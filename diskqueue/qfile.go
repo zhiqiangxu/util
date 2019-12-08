@@ -116,8 +116,12 @@ func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
 		return
 	}
 
-	size := binary.BigEndian.Uint32(sizeBytes)
-	dataBytes = qf.q.syncByteArena.AllocBytes(int(offset), int(size))
+	size := int(binary.BigEndian.Uint32(sizeBytes))
+	if size > qf.q.conf.MaxMsgSize {
+		err = errInvalidOffset
+		return
+	}
+	dataBytes = qf.q.syncByteArena.AllocBytes(int(offset), size)
 	_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
 	return
 }
