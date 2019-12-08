@@ -21,7 +21,7 @@ import (
 type queueInterface interface {
 	Put([]byte) (int64, error)
 	Read(offset int64) ([]byte, error)
-	Close() error
+	Close()
 	Delete() error
 }
 
@@ -42,6 +42,7 @@ type Queue struct {
 	flock         sync.RWMutex
 	files         []*qfile
 	syncByteArena *util.SyncByteArena
+	once          sync.Once
 }
 
 const (
@@ -373,34 +374,34 @@ func (q *Queue) checkCloseState() (err error) {
 }
 
 // Close the queue
-func (q *Queue) Close() (err error) {
+func (q *Queue) Close() {
 
-	swapped := atomic.CompareAndSwapUint32(&q.closeState, open, closing)
-	if !swapped {
-		return q.checkCloseState()
-	}
+	q.once.Do(func() {
+		atomic.StoreUint32(&q.closeState, closing)
 
-	util.TryUntilSuccess(func() bool {
-		// try until success
-		err = q.meta.Close()
-		if err != nil {
-			logger.Instance().Error("meta.Close", zap.Error(err))
-			return false
-		}
+		util.TryUntilSuccess(func() bool {
+			// try until success
+			err := q.meta.Close()
+			if err != nil {
+				logger.Instance().Error("meta.Close", zap.Error(err))
+				return false
+			}
 
-		return true
-		// need human interfere
+			return true
+			// need human interfere
 
-	}, time.Second)
+		}, time.Second)
 
-	close(q.doneCh)
-	q.wg.Wait()
-	atomic.StoreUint32(&q.closeState, closed)
+		close(q.doneCh)
+		q.wg.Wait()
+		atomic.StoreUint32(&q.closeState, closed)
+	})
 
 	return
 }
 
 // Delete the queue
 func (q *Queue) Delete() error {
-	return nil
+	q.Close()
+	return os.RemoveAll(q.conf.Directory)
 }

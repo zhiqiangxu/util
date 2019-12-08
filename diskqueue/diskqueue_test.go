@@ -23,7 +23,7 @@ func TestQueue(t *testing.T) {
 		assert.Assert(t, err == nil && bytes.Equal(readData, testData), err)
 	}
 
-	err = q.Close()
+	err = q.Delete()
 	assert.Assert(t, err == nil)
 
 }
