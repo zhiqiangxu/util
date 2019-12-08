@@ -40,7 +40,7 @@ const (
 var _ qfileInterface = (*qfile)(nil)
 
 func qfilePath(startOffset int64, conf *Conf) string {
-	return filepath.Join(conf.Directory, qfSubDir, fmt.Sprintf("%20d", startOffset))
+	return filepath.Join(conf.Directory, qfSubDir, fmt.Sprintf("%020d", startOffset))
 }
 
 func openQfile(q *Queue, idx int, isLatest bool) (qf *qfile, err error) {
