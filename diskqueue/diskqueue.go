@@ -21,6 +21,8 @@ import (
 type queueInterface interface {
 	Put([]byte) (int64, error)
 	Read(offset int64) ([]byte, error)
+	StreamRead(offset int64) (chan []byte, error)
+	EndStream(ch chan []byte) error
 	Close()
 	Delete() error
 }
@@ -342,6 +344,16 @@ func (q *Queue) Read(offset int64) (data []byte, err error) {
 	data, err = qf.Read(offset)
 
 	return
+}
+
+// StreamRead for stream read
+func (q *Queue) StreamRead(offset int64) (ch chan []byte, err error) {
+	return
+}
+
+// EndStream for end stream
+func (q *Queue) EndStream(ch chan []byte) error {
+	return nil
 }
 
 var (
