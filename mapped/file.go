@@ -20,9 +20,10 @@ type fileInterface interface {
 	Resize(newSize int64) (err error)
 	Write(data []byte) (n int, err error)
 	writeBuffers(*net.Buffers) (int64, error)
-	WrotePositionNonAtomic() int64
+	GetWrotePosition() int64
 	Read(offset int64, data []byte) (n int, err error)
 	Commit()
+	ReturnWriteBuffer()
 	MLock() (err error)
 	MUnlock() (err error)
 	IsFull() bool
@@ -51,6 +52,7 @@ type File struct {
 	fileSize int64
 	fileName string
 	fmap     []byte
+	flock    sync.RWMutex
 	file     *os.File
 	flags    int
 	wmm      bool
@@ -107,7 +109,7 @@ func (f *File) init() (err error) {
 		if err != nil {
 			// 如果出错，及时释放资源
 			f.file.Close()
-			f.finalize()
+			f.returnWriteBuffer()
 		}
 	}()
 
@@ -210,12 +212,8 @@ func (f *File) Resize(newSize int64) (err error) {
 	return
 }
 
-// WrotePositionNonAtomic for writing side
-func (f *File) WrotePositionNonAtomic() int64 {
-	return f.wrotePosition
-}
-
-func (f *File) getWrotePosition() int64 {
+// GetWrotePosition for wrote position
+func (f *File) GetWrotePosition() int64 {
 	return atomic.LoadInt64(&f.wrotePosition)
 }
 
@@ -230,7 +228,7 @@ func (f *File) getReadPosition() int64 {
 		return f.getCommitPosition()
 	}
 
-	return f.getWrotePosition()
+	return f.GetWrotePosition()
 }
 
 func (f *File) getCommitPosition() int64 {
@@ -319,14 +317,7 @@ func (f *File) doWrite(data []byte) (n int, err error) {
 
 }
 
-// Commit buffer to os if any
-func (f *File) Commit() {
-	if f.writeBuffer == nil {
-		return
-	}
-
-	f.cwmu.Lock()
-	defer f.cwmu.Unlock()
+func (f *File) commitLocked() {
 
 	if f.writeBuffer.Len() == 0 {
 		return
@@ -352,7 +343,33 @@ func (f *File) Commit() {
 	}, time.Second)
 
 	f.addAndGetCommitPosition(n)
+}
 
+// Commit buffer to os if any
+func (f *File) Commit() {
+	if f.writeBuffer == nil {
+		return
+	}
+
+	f.cwmu.Lock()
+	defer f.cwmu.Unlock()
+
+	f.commitLocked()
+
+}
+
+// ReturnWriteBuffer = Commit + returnWriteBuffer
+func (f *File) ReturnWriteBuffer() {
+	if f.writeBuffer == nil {
+		return
+	}
+
+	f.cwmu.Lock()
+	defer f.cwmu.Unlock()
+
+	f.commitLocked()
+
+	f.returnWriteBuffer()
 	return
 }
 
@@ -418,20 +435,20 @@ func (f *File) Close() (err error) {
 	}
 	f.fmap = nil
 
-	f.finalize()
+	f.returnWriteBuffer()
 	return
 }
 
 // MappedBytes is valid until next Resize
 func (f *File) MappedBytes() []byte {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 
 	return f.fmap
 }
 
 // return stuff to pools for write mode
-func (f *File) finalize() {
+func (f *File) returnWriteBuffer() {
 	if f.writeBuffer == nil {
 		return
 	}

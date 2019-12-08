@@ -9,6 +9,7 @@ import (
 )
 
 func TestFile(t *testing.T) {
+
 	fileName := "/tmp/test_file"
 	os.Remove(fileName)
 	f, err := CreateFile(fileName, 64000, false, nil)

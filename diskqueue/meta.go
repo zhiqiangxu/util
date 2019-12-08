@@ -19,6 +19,7 @@ type queueMetaInterface interface {
 	FileMeta(idx int) FileMeta
 	AddFile(f FileMeta)
 	UpdateFileStat(idx, n int, endOffset, endTime int64)
+	LocateFile(readOffset int64) int
 	Sync() error
 	Close() error
 }
@@ -27,12 +28,13 @@ var _ queueMetaInterface = (*queueMeta)(nil)
 
 const (
 	maxSizeForMeta = 1024 * 1024
+	headerSize     = 4
 )
 
 // FileMeta for a single file
 type FileMeta struct {
-	StartOffset int64
-	EndOffset   int64
+	StartOffset int64 // inclusive
+	EndOffset   int64 // exclusive
 	StartTime   int64
 	EndTime     int64
 	MsgCount    uint64
@@ -91,7 +93,7 @@ func (m *queueMeta) FileMeta(idx int) (fm FileMeta) {
 		logger.Instance().Fatal("FileMeta idx over size", zap.Int("idx", idx), zap.Int("nFiles", nFiles))
 	}
 
-	offset := 4 + int(unsafe.Sizeof(FileMeta{}))*idx
+	offset := headerSize + int(unsafe.Sizeof(FileMeta{}))*idx
 	startOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset:]))
 	endOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+8:]))
 	startTime := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+16:]))
@@ -107,7 +109,7 @@ func (m *queueMeta) AddFile(f FileMeta) {
 
 	nFiles := binary.BigEndian.Uint32(m.mappedBytes)
 	binary.BigEndian.PutUint32(m.mappedBytes, nFiles+1)
-	offset := 4 + int(unsafe.Sizeof(FileMeta{}))*int(nFiles)
+	offset := headerSize + int(unsafe.Sizeof(FileMeta{}))*int(nFiles)
 	binary.BigEndian.PutUint64(m.mappedBytes[offset:], uint64(f.StartOffset))
 	binary.BigEndian.PutUint64(m.mappedBytes[offset+8:], uint64(f.EndOffset))
 	binary.BigEndian.PutUint64(m.mappedBytes[offset+16:], uint64(f.StartTime))
@@ -124,7 +126,7 @@ func (m *queueMeta) UpdateFileStat(idx, n int, endOffset, endTime int64) {
 		logger.Instance().Fatal("UpdateFileStat idx over size", zap.Int("idx", idx), zap.Int("nFiles", nFiles))
 	}
 
-	offset := 4 + int(unsafe.Sizeof(FileMeta{}))*idx
+	offset := headerSize + int(unsafe.Sizeof(FileMeta{}))*idx
 	endOffset0 := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+8:]))
 	startTime0 := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+16:]))
 	endTime0 := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+24:]))
@@ -145,6 +147,34 @@ func (m *queueMeta) UpdateFileStat(idx, n int, endOffset, endTime int64) {
 	binary.BigEndian.PutUint64(m.mappedBytes[offset+32:], msgCount0+1)
 
 	return
+
+}
+
+func (m *queueMeta) LocateFile(readOffset int64) int {
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	start := 0
+	end := int(binary.BigEndian.Uint32(m.mappedBytes) - 1)
+
+	// 二分查找
+	for start <= end {
+		target := start + (end-start)/2 // 防止溢出
+		offset := headerSize + int(unsafe.Sizeof(FileMeta{}))*target
+		startOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset:]))
+		endOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+8:]))
+		switch {
+		case startOffset <= readOffset && endOffset > readOffset:
+			return target
+		case readOffset < startOffset:
+			end = target - 1
+		case readOffset >= endOffset:
+			start = target + 1
+		}
+	}
+
+	return -1
 
 }
 

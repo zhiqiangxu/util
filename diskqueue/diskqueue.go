@@ -21,7 +21,7 @@ import (
 type queueInterface interface {
 	Init() error
 	Put([]byte) (int64, error)
-	Read(offset int64, stores [][]byte) (results [][]byte, err error)
+	Read(offset int64) ([]byte, error)
 	Close() error
 	Delete() error
 }
@@ -30,6 +30,7 @@ var _ queueInterface = (*Queue)(nil)
 
 // Queue for diskqueue
 type Queue struct {
+	putting    int32
 	closeState uint32
 	wg         sync.WaitGroup
 	meta       *queueMeta
@@ -39,12 +40,16 @@ type Queue struct {
 	writeBuffs net.Buffers
 	sizeBuffs  []byte
 	doneCh     chan struct{}
+	flock      sync.RWMutex
 	files      []*qfile
+	byteArena  *util.ByteArena
 }
 
 const (
-	defaultWriteBatch = 1
-	defaultMaxMsgSize = 512 * 1024 * 1024
+	defaultWriteBatch         = 100
+	defaultMaxMsgSize         = 512 * 1024 * 1024
+	defaultMaxPutting         = 10000
+	defaultByteArenaChunkSize = 100 * 1024 * 1024
 )
 
 // New is ctor for Queue
@@ -55,8 +60,14 @@ func New(conf Conf) *Queue {
 	if conf.MaxMsgSize <= 0 {
 		conf.MaxMsgSize = defaultMaxMsgSize
 	}
+	if conf.MaxPutting <= 0 {
+		conf.MaxPutting = defaultMaxPutting
+	}
+	if conf.ByteArenaChunkSize <= 0 {
+		conf.ByteArenaChunkSize = defaultByteArenaChunkSize
+	}
 
-	q := &Queue{conf: conf, writeCh: make(chan *writeRequest, conf.WriteBatch), writeReqs: make([]*writeRequest, 0, conf.WriteBatch), writeBuffs: make(net.Buffers, 0, conf.WriteBatch*2), sizeBuffs: make([]byte, 4*conf.WriteBatch), doneCh: make(chan struct{})}
+	q := &Queue{conf: conf, writeCh: make(chan *writeRequest, conf.WriteBatch), writeReqs: make([]*writeRequest, 0, conf.WriteBatch), writeBuffs: make(net.Buffers, 0, conf.WriteBatch*2), sizeBuffs: make([]byte, 4*conf.WriteBatch), doneCh: make(chan struct{}), byteArena: util.NewByteArena(conf.ByteArenaChunkSize, conf.ByteArenaChunkSize)}
 	q.meta = newQueueMeta(&q.conf)
 	return q
 }
@@ -85,7 +96,7 @@ func (q *Queue) Init() (err error) {
 	q.files = make([]*qfile, 0, nFiles)
 	var qf *qfile
 	for i := 0; i < nFiles; i++ {
-		qf, err = openQfile(q.meta, i)
+		qf, err = openQfile(q, i, i == nFiles-1)
 		if err != nil {
 			return
 		}
@@ -116,24 +127,28 @@ func (q *Queue) Init() (err error) {
 func (q *Queue) createQfile() (err error) {
 	var qf *qfile
 	if len(q.files) == 0 {
-		qf, err = createQfile(q.meta, 0, 0)
+		qf, err = createQfile(q, 0, 0)
 		if err != nil {
 			return
 		}
 	} else {
-		qf, err = createQfile(q.meta, len(q.files), q.files[len(q.files)-1].WrotePosition())
+		qf = q.files[len(q.files)-1]
+		qf.ReturnWriteBuffer()
+		qf, err = createQfile(q, len(q.files), qf.WrotePosition())
 		if err != nil {
 			return
 		}
 	}
+	q.flock.Lock()
 	q.files = append(q.files, qf)
+	q.flock.Unlock()
 	return
 }
 
 type writeResult struct {
-	err    error
 	offset int64
 }
+
 type writeRequest struct {
 	data   []byte
 	result chan writeResult
@@ -208,13 +223,15 @@ func (q *Queue) handleWrite() {
 			}, time.Second)
 
 			q.meta.UpdateFileStat(len(q.files)-1, len(q.writeReqs), startWrotePosition+totalN, NowNano())
-			totalN = 0
+
 			q.writeBuffs = writeBuffs
 
 			// 全部写入成功
 			for _, req := range q.writeReqs {
-				req.result <- writeResult{}
+				req.result <- writeResult{offset: startWrotePosition}
+				startWrotePosition += int64(4) + int64(len(req.data))
 			}
+			totalN = 0
 
 		}
 	}
@@ -238,6 +255,10 @@ func (q *Queue) handleCommit() {
 	for {
 		select {
 		case <-ticker.C:
+			q.flock.RLock()
+			qf := q.files[len(q.files)-1]
+			q.flock.RUnlock()
+			qf.Commit()
 		case <-q.doneCh:
 			return
 		}
@@ -257,6 +278,13 @@ func (q *Queue) Put(data []byte) (offset int64, err error) {
 		return
 	}
 
+	putting := atomic.AddInt32(&q.putting, 1)
+	defer atomic.AddInt32(&q.putting, -1)
+	if int(putting) > q.conf.MaxPutting {
+		err = errMaxPutting
+		return
+	}
+
 	wreq := wreqPool.Get().(*writeRequest)
 	wreq.data = data
 	if len(wreq.result) > 0 {
@@ -267,7 +295,6 @@ func (q *Queue) Put(data []byte) (offset int64, err error) {
 	case q.writeCh <- wreq:
 		result := <-wreq.result
 		offset = result.offset
-		err = result.err
 		return
 	case <-q.doneCh:
 		err = errAlreadyClosed
@@ -277,11 +304,28 @@ func (q *Queue) Put(data []byte) (offset int64, err error) {
 }
 
 // ReadFrom for read from offset
-func (q *Queue) Read(offset int64, stores [][]byte) (results [][]byte, err error) {
+func (q *Queue) Read(offset int64) (data []byte, err error) {
 	err = q.checkCloseState()
 	if err != nil {
 		return
 	}
+
+	idx := q.meta.LocateFile(offset)
+	if idx < 0 {
+		err = errInvalidOffset
+		return
+	}
+
+	q.flock.RLock()
+	qf := q.files[idx]
+	q.flock.RUnlock()
+
+	fileOffset := offset - qf.startOffset
+	if fileOffset < 0 {
+		logger.Instance().Fatal("negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
+	}
+
+	// qf.
 
 	return
 }
@@ -290,6 +334,8 @@ var (
 	errAlreadyClosed  = errors.New("already closed")
 	errAlreadyClosing = errors.New("already closing")
 	errMsgTooLarge    = errors.New("msg too large")
+	errMaxPutting     = errors.New("too much putting")
+	errInvalidOffset  = errors.New("invalid offset")
 )
 
 const (
