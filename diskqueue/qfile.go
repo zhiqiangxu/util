@@ -99,7 +99,7 @@ func (qf *qfile) Commit() {
 	qf.mappedFile.Commit()
 }
 
-func (qf *qfile) Read(offset int64) (data []byte, err error) {
+func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
 	fileOffset := offset - qf.startOffset
 	if fileOffset < 0 {
 		logger.Instance().Error("negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
@@ -117,7 +117,7 @@ func (qf *qfile) Read(offset int64) (data []byte, err error) {
 	}
 
 	size := binary.BigEndian.Uint32(sizeBytes)
-	dataBytes := qf.q.syncByteArena.AllocBytes(int(offset), int(size))
+	dataBytes = qf.q.syncByteArena.AllocBytes(int(offset), int(size))
 	_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
 	return
 }

@@ -19,7 +19,6 @@ import (
 )
 
 type queueInterface interface {
-	Init() error
 	Put([]byte) (int64, error)
 	Read(offset int64) ([]byte, error)
 	Close() error
@@ -54,7 +53,12 @@ const (
 )
 
 // New is ctor for Queue
-func New(conf Conf) *Queue {
+func New(conf Conf) (q *Queue, err error) {
+	if conf.Directory == "" {
+		err = errEmptyDirectory
+		return
+	}
+
 	if conf.WriteBatch <= 0 {
 		conf.WriteBatch = defaultWriteBatch
 	}
@@ -68,7 +72,7 @@ func New(conf Conf) *Queue {
 		conf.ByteArenaChunkSize = defaultByteArenaChunkSize
 	}
 
-	q := &Queue{
+	q = &Queue{
 		conf:          conf,
 		writeCh:       make(chan *writeRequest, conf.WriteBatch),
 		writeReqs:     make([]*writeRequest, 0, conf.WriteBatch),
@@ -78,15 +82,16 @@ func New(conf Conf) *Queue {
 		syncByteArena: util.NewSyncByteArena(conf.ByteArenaChunkSize, conf.ByteArenaChunkSize),
 	}
 	q.meta = newQueueMeta(&q.conf)
-	return q
+	err = q.init()
+	return
 }
 
 const (
-	dirPerm = 0660
+	dirPerm = 0770
 )
 
-// Init the queue
-func (q *Queue) Init() (err error) {
+// init the queue
+func (q *Queue) init() (err error) {
 
 	// 确保各种目录存在
 	err = os.MkdirAll(filepath.Join(q.conf.Directory, qfSubDir), dirPerm)
@@ -303,9 +308,13 @@ func (q *Queue) Put(data []byte) (offset int64, err error) {
 	select {
 	case q.writeCh <- wreq:
 		result := <-wreq.result
+		wreq.data = nil
+		wreqPool.Put(wreq)
 		offset = result.offset
 		return
 	case <-q.doneCh:
+		wreq.data = nil
+		wreqPool.Put(wreq)
 		err = errAlreadyClosed
 		return
 	}
@@ -335,6 +344,7 @@ func (q *Queue) Read(offset int64) (data []byte, err error) {
 }
 
 var (
+	errEmptyDirectory = errors.New("directory empty")
 	errAlreadyClosed  = errors.New("already closed")
 	errAlreadyClosing = errors.New("already closing")
 	errMsgTooLarge    = errors.New("msg too large")
