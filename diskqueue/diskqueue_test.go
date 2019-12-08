@@ -14,12 +14,15 @@ func TestQueue(t *testing.T) {
 	assert.Assert(t, err == nil)
 
 	testData := []byte("abc")
-	offset, err := q.Put(testData)
-	assert.Assert(t, err == nil)
 
-	readData, err := q.Read(offset)
-	fmt.Println(string(readData))
-	assert.Assert(t, err == nil && bytes.Equal(readData, testData), err)
+	for i := 0; i < 1000; i++ {
+		offset, err := q.Put(testData)
+		assert.Assert(t, err == nil)
+
+		readData, err := q.Read(offset)
+		fmt.Println(string(readData))
+		assert.Assert(t, err == nil && bytes.Equal(readData, testData), err)
+	}
 
 	err = q.Close()
 	assert.Assert(t, err == nil)
