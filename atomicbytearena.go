@@ -50,7 +50,7 @@ func (aa *AtomicByteArena) AllocBytes(n int) (bytes []byte) {
 		return
 	}
 
-	aa.ballast = make([]byte, len(aa.ballast))
+	aa.ballast = make([]byte, aa.chunkSize)
 
 	bytes = aa.ballast[0:n]
 	atomic.StoreInt64(&aa.offset, nint64)
