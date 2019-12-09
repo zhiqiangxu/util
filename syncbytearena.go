@@ -6,10 +6,10 @@ import (
 
 // SyncByteArena is concurrent safe version of ByteArena
 type SyncByteArena struct {
-	shards []shardByteArena
+	shards []byteArenaShard
 }
 
-type shardByteArena struct {
+type byteArenaShard struct {
 	sync.Mutex
 	ByteArena
 }
@@ -25,9 +25,9 @@ func NewSyncByteArena(chunkAllocMinSize, chunkAllocMaxSize int) *SyncByteArena {
 
 // NewSyncByteArenaWithShards is ctor for SyncByteArena
 func NewSyncByteArenaWithShards(chunkAllocMinSize, chunkAllocMaxSize, shardCount int) *SyncByteArena {
-	shards := make([]shardByteArena, 0, shardCount)
+	shards := make([]byteArenaShard, 0, shardCount)
 	for i := 0; i < shardCount; i++ {
-		shards = append(shards, shardByteArena{ByteArena: ByteArena{chunkAllocMinSize: chunkAllocMinSize, chunkAllocMaxSize: chunkAllocMaxSize}})
+		shards = append(shards, byteArenaShard{ByteArena: ByteArena{chunkAllocMinSize: chunkAllocMinSize, chunkAllocMaxSize: chunkAllocMaxSize}})
 	}
 	return &SyncByteArena{shards: shards}
 }
@@ -39,7 +39,7 @@ func (sa *SyncByteArena) AllocBytes(shard, n int) []byte {
 	return sa.shards[idx].AllocBytes(n)
 }
 
-func (shard *shardByteArena) AllocBytes(n int) []byte {
+func (shard *byteArenaShard) AllocBytes(n int) []byte {
 	shard.Lock()
 	defer shard.Unlock()
 
