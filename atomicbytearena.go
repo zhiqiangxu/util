@@ -16,7 +16,7 @@ type AtomicByteArena struct {
 
 // NewAtomicByteArena is ctor for AtomicByteArena
 func NewAtomicByteArena(chunkSize int) *AtomicByteArena {
-	return &AtomicByteArena{ballast: make([]byte, chunkSize)}
+	return &AtomicByteArena{ballast: make([]byte, chunkSize), chunkSize: chunkSize}
 }
 
 // AllocBytes does what it says:)
