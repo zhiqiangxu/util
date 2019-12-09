@@ -32,7 +32,7 @@ func (aa *AtomicByteArena) AllocBytes(n int) (bytes []byte) {
 		aa.RLock()
 
 		newOffset := atomic.AddInt64(&aa.offset, nint64)
-		if newOffset < int64(len(aa.ballast)) {
+		if newOffset <= int64(len(aa.ballast)) {
 			bytes = aa.ballast[newOffset-nint64 : newOffset]
 			aa.RUnlock()
 			return
@@ -45,7 +45,7 @@ func (aa *AtomicByteArena) AllocBytes(n int) (bytes []byte) {
 
 		// double check
 		newOffset = atomic.AddInt64(&aa.offset, nint64)
-		if newOffset < int64(len(aa.ballast)) {
+		if newOffset <= int64(len(aa.ballast)) {
 			bytes = aa.ballast[newOffset-nint64 : newOffset]
 			aa.Unlock()
 			return
