@@ -21,6 +21,7 @@ type qfileInterface interface {
 	ReturnWriteBuffer()
 	Commit()
 	Read(offset int64) ([]byte, error)
+	StreamRead(offset int64) (ch chan []byte, err error)
 	Sync() error
 	Close() error
 }
@@ -103,7 +104,7 @@ func (qf *qfile) Commit() {
 func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
 	fileOffset := offset - qf.startOffset
 	if fileOffset < 0 {
-		logger.Instance().Error("negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
+		logger.Instance().Error("Read negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
 		err = errInvalidOffset
 		return
 	}
@@ -111,7 +112,7 @@ func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
 	qf.mappedFile.RLock()
 	defer qf.mappedFile.RUnlock()
 
-	sizeBytes := qf.q.syncByteArena.AllocBytes(int(offset), sizeLength)
+	sizeBytes := qf.q.syncByteArena.AllocBytes(sizeLength)
 	_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
 	if err != nil {
 		return
@@ -122,8 +123,34 @@ func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
 		err = errInvalidOffset
 		return
 	}
-	dataBytes = qf.q.syncByteArena.AllocBytes(int(offset), size)
+	dataBytes = qf.q.syncByteArena.AllocBytes(size)
 	_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
+	return
+}
+
+func (qf *qfile) StreamRead(offset int64) (ch chan []byte, err error) {
+	fileOffset := offset - qf.startOffset
+	if fileOffset < 0 {
+		logger.Instance().Error("StreamRead negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
+		err = errInvalidOffset
+		return
+	}
+
+	qf.mappedFile.RLock()
+	defer qf.mappedFile.RUnlock()
+
+	sizeBytes := qf.q.syncByteArena.AllocBytes(sizeLength)
+	_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
+	if err != nil {
+		return
+	}
+
+	size := int(binary.BigEndian.Uint32(sizeBytes))
+	if size > qf.q.conf.MaxMsgSize {
+		err = errInvalidOffset
+		return
+	}
+
 	return
 }
 

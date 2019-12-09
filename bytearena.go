@@ -1,6 +1,6 @@
 package util
 
-// ByteArena for reduce GC pressure
+// ByteArena for reduce GC pressure, not concurrent safe
 type ByteArena struct {
 	alloc             []byte
 	chunkAllocMinSize int

@@ -43,7 +43,7 @@ type Queue struct {
 	doneCh        chan struct{}
 	flock         sync.RWMutex
 	files         []*qfile
-	syncByteArena *util.SyncByteArena
+	syncByteArena *util.AtomicByteArena
 	once          sync.Once
 }
 
@@ -82,7 +82,7 @@ func New(conf Conf) (q *Queue, err error) {
 		writeBuffs:    make(net.Buffers, 0, conf.WriteBatch*2),
 		sizeBuffs:     make([]byte, sizeLength*conf.WriteBatch),
 		doneCh:        make(chan struct{}),
-		syncByteArena: util.NewSyncByteArena(conf.ByteArenaChunkSize, conf.ByteArenaChunkSize),
+		syncByteArena: util.NewAtomicByteArena(conf.ByteArenaChunkSize),
 	}
 	q.meta = newQueueMeta(&q.conf)
 	err = q.init()
@@ -348,6 +348,22 @@ func (q *Queue) Read(offset int64) (data []byte, err error) {
 
 // StreamRead for stream read
 func (q *Queue) StreamRead(offset int64) (ch chan []byte, err error) {
+	err = q.checkCloseState()
+	if err != nil {
+		return
+	}
+
+	idx := q.meta.LocateFile(offset)
+	if idx < 0 {
+		err = errInvalidOffset
+		return
+	}
+
+	q.flock.RLock()
+	qf := q.files[idx]
+	q.flock.RUnlock()
+
+	ch, err = qf.StreamRead(offset)
 	return
 }
 
