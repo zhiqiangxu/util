@@ -27,37 +27,35 @@ func (aa *AtomicByteArena) AllocBytes(n int) (bytes []byte) {
 	}
 
 	nint64 := int64(n)
-	for {
 
-		aa.RLock()
+	aa.RLock()
 
-		newOffset := atomic.AddInt64(&aa.offset, nint64)
-		if newOffset <= int64(len(aa.ballast)) {
-			bytes = aa.ballast[newOffset-nint64 : newOffset]
-			aa.RUnlock()
-			return
-		}
+	newOffset := atomic.AddInt64(&aa.offset, nint64)
+	if newOffset <= int64(len(aa.ballast)) {
+		bytes = aa.ballast[newOffset-nint64 : newOffset]
 		aa.RUnlock()
-
-		// need to allocate new ballast
-
-		aa.Lock()
-
-		// double check
-		newOffset = atomic.AddInt64(&aa.offset, nint64)
-		if newOffset <= int64(len(aa.ballast)) {
-			bytes = aa.ballast[newOffset-nint64 : newOffset]
-			aa.Unlock()
-			return
-		}
-
-		aa.ballast = make([]byte, len(aa.ballast))
-
-		bytes = aa.ballast[0:n]
-		atomic.StoreInt64(&aa.offset, nint64)
-		aa.Unlock()
-
 		return
 	}
+	aa.RUnlock()
+
+	// need to allocate new ballast
+
+	aa.Lock()
+
+	// double check
+	newOffset = atomic.AddInt64(&aa.offset, nint64)
+	if newOffset <= int64(len(aa.ballast)) {
+		bytes = aa.ballast[newOffset-nint64 : newOffset]
+		aa.Unlock()
+		return
+	}
+
+	aa.ballast = make([]byte, len(aa.ballast))
+
+	bytes = aa.ballast[0:n]
+	atomic.StoreInt64(&aa.offset, nint64)
+	aa.Unlock()
+
+	return
 
 }
