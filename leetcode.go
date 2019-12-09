@@ -2,8 +2,6 @@ package util
 
 import (
 	"math"
-
-	"github.com/zhiqiangxu/qrpc"
 )
 
 // Max for int
@@ -145,7 +143,7 @@ func ManacherWithFallback(s string) (ss string) {
 		}
 	}
 
-	ss = qrpc.String(targetBytes)
+	ss = String(targetBytes)
 	if len(ss) != r[maxRPos]-1 {
 		panic("size != r[maxRPos]-1")
 	}
