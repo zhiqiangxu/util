@@ -316,8 +316,6 @@ func (q *Queue) Put(data []byte) (offset int64, err error) {
 		offset = result.offset
 		return
 	case <-q.doneCh:
-		wreq.data = nil
-		wreqPool.Put(wreq)
 		err = errAlreadyClosed
 		return
 	}
