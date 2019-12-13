@@ -112,7 +112,7 @@ func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
 	qf.mappedFile.RLock()
 	defer qf.mappedFile.RUnlock()
 
-	sizeBytes := qf.q.syncByteArena.AllocBytes(sizeLength)
+	sizeBytes := make([]byte, sizeLength)
 	_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
 	if err != nil {
 		return
@@ -123,7 +123,7 @@ func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
 		err = errInvalidOffset
 		return
 	}
-	dataBytes = qf.q.syncByteArena.AllocBytes(size)
+	dataBytes = make([]byte, size)
 	_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
 	return
 }
@@ -139,7 +139,7 @@ func (qf *qfile) StreamRead(offset int64) (ch chan []byte, err error) {
 	qf.mappedFile.RLock()
 	defer qf.mappedFile.RUnlock()
 
-	sizeBytes := qf.q.syncByteArena.AllocBytes(sizeLength)
+	sizeBytes := make([]byte, sizeLength)
 	_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
 	if err != nil {
 		return

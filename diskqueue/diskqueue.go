@@ -31,20 +31,19 @@ var _ queueInterface = (*Queue)(nil)
 
 // Queue for diskqueue
 type Queue struct {
-	putting       int32
-	closeState    uint32
-	wg            sync.WaitGroup
-	meta          *queueMeta
-	conf          Conf
-	writeCh       chan *writeRequest
-	writeReqs     []*writeRequest
-	writeBuffs    net.Buffers
-	sizeBuffs     []byte
-	doneCh        chan struct{}
-	flock         sync.RWMutex
-	files         []*qfile
-	syncByteArena *util.AtomicByteArena
-	once          sync.Once
+	putting    int32
+	closeState uint32
+	wg         sync.WaitGroup
+	meta       *queueMeta
+	conf       Conf
+	writeCh    chan *writeRequest
+	writeReqs  []*writeRequest
+	writeBuffs net.Buffers
+	sizeBuffs  []byte
+	doneCh     chan struct{}
+	flock      sync.RWMutex
+	files      []*qfile
+	once       sync.Once
 }
 
 const (
@@ -76,13 +75,12 @@ func New(conf Conf) (q *Queue, err error) {
 	}
 
 	q = &Queue{
-		conf:          conf,
-		writeCh:       make(chan *writeRequest, conf.WriteBatch),
-		writeReqs:     make([]*writeRequest, 0, conf.WriteBatch),
-		writeBuffs:    make(net.Buffers, 0, conf.WriteBatch*2),
-		sizeBuffs:     make([]byte, sizeLength*conf.WriteBatch),
-		doneCh:        make(chan struct{}),
-		syncByteArena: util.NewAtomicByteArena(conf.ByteArenaChunkSize),
+		conf:       conf,
+		writeCh:    make(chan *writeRequest, conf.WriteBatch),
+		writeReqs:  make([]*writeRequest, 0, conf.WriteBatch),
+		writeBuffs: make(net.Buffers, 0, conf.WriteBatch*2),
+		sizeBuffs:  make([]byte, sizeLength*conf.WriteBatch),
+		doneCh:     make(chan struct{}),
 	}
 	q.meta = newQueueMeta(&q.conf)
 	err = q.init()
