@@ -26,6 +26,7 @@ type qfileInterface interface {
 	Close() error
 }
 
+// qfile has no write-write races, but has read-write races
 type qfile struct {
 	q           *Queue
 	idx         int
