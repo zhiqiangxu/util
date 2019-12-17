@@ -356,10 +356,9 @@ func (q *Queue) StreamRead(offset int64) (ch chan []byte, err error) {
 	}
 
 	q.flock.RLock()
-	qf := q.files[idx]
+	// qf := q.files[idx]
 	q.flock.RUnlock()
 
-	ch, err = qf.StreamRead(offset)
 	return
 }
 

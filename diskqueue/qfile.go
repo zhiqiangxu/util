@@ -21,7 +21,6 @@ type qfileInterface interface {
 	ReturnWriteBuffer()
 	Commit()
 	Read(offset int64) ([]byte, error)
-	StreamRead(offset int64) (ch chan []byte, err error)
 	Sync() error
 	Close() error
 }
@@ -126,32 +125,6 @@ func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
 	}
 	dataBytes = make([]byte, size)
 	_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
-	return
-}
-
-func (qf *qfile) StreamRead(offset int64) (ch chan []byte, err error) {
-	fileOffset := offset - qf.startOffset
-	if fileOffset < 0 {
-		logger.Instance().Error("StreamRead negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
-		err = errInvalidOffset
-		return
-	}
-
-	qf.mappedFile.RLock()
-	defer qf.mappedFile.RUnlock()
-
-	sizeBytes := make([]byte, sizeLength)
-	_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
-	if err != nil {
-		return
-	}
-
-	size := int(binary.BigEndian.Uint32(sizeBytes))
-	if size > qf.q.conf.MaxMsgSize {
-		err = errInvalidOffset
-		return
-	}
-
 	return
 }
 
