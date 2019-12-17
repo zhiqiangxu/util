@@ -148,7 +148,7 @@ func (q *Queue) createQfile() (err error) {
 		}
 	} else {
 		qf = q.files[len(q.files)-1]
-		qf.ReturnWriteBuffer()
+		qf.DoneWrite()
 		qf, err = createQfile(q, len(q.files), qf.WrotePosition())
 		if err != nil {
 			return

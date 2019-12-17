@@ -27,7 +27,7 @@ type fileInterface interface {
 	RLock()
 	RUnlock()
 	Commit()
-	ReturnWriteBuffer()
+	DoneWrite()
 	MLock() (err error)
 	MUnlock() (err error)
 	IsFull() bool
@@ -369,8 +369,8 @@ func (f *File) Commit() {
 
 }
 
-// ReturnWriteBuffer = Commit + returnWriteBuffer
-func (f *File) ReturnWriteBuffer() {
+// DoneWrite = Commit + returnWriteBuffer
+func (f *File) DoneWrite() {
 	if f.writeBuffer == nil {
 		return
 	}

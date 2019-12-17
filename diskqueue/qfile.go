@@ -15,10 +15,12 @@ import (
 )
 
 type qfileInterface interface {
+	NewIterator() *qfileIterator
+	IsInRange(offset int64) bool
 	Shrink() error
 	writeBuffers(buffs *net.Buffers) (int64, error)
 	WrotePosition() int64
-	ReturnWriteBuffer()
+	DoneWrite()
 	Commit()
 	Read(offset int64) ([]byte, error)
 	Sync() error
@@ -82,6 +84,19 @@ func createQfile(q *Queue, idx int, startOffset int64) (qf *qfile, err error) {
 	return
 }
 
+func (qf *qfile) NewIterator() *qfileIterator {
+	return &qfileIterator{qf: qf}
+}
+
+// TODO enhance to check if offset is valid
+func (qf *qfile) IsInRange(offset int64) bool {
+	if offset < qf.startOffset {
+		return false
+	}
+
+	return offset-qf.startOffset < qf.mappedFile.GetWrotePosition()
+}
+
 func (qf *qfile) writeBuffers(buffs *net.Buffers) (n int64, err error) {
 	n, err = qf.mappedFile.WriteBuffers(buffs)
 	return
@@ -93,8 +108,8 @@ func (qf *qfile) WrotePosition() int64 {
 	return qf.mappedFile.GetWrotePosition()
 }
 
-func (qf *qfile) ReturnWriteBuffer() {
-	qf.mappedFile.ReturnWriteBuffer()
+func (qf *qfile) DoneWrite() {
+	qf.mappedFile.DoneWrite()
 }
 
 func (qf *qfile) Commit() {
