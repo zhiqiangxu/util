@@ -13,7 +13,7 @@ type Max struct {
 	ch    chan struct{}
 }
 
-// NewMax creates Max
+// NewMax is ctor for Max
 func NewMax(max int64) *Max {
 	m := &Max{max: max, ch: make(chan struct{})}
 	go m.monitor()
