@@ -3,6 +3,8 @@ package wm
 import (
 	"context"
 	"sync/atomic"
+
+	"github.com/zhiqiangxu/rpheap"
 )
 
 type wait struct {
@@ -15,11 +17,12 @@ type Offset struct {
 	doneOffset int64
 	waitCh     chan wait
 	doneCh     chan struct{}
+	heap       *rpheap.Heap
 }
 
 // NewOffset is ctor for Offset
 func NewOffset() *Offset {
-	o := &Offset{waitCh: make(chan wait), doneCh: make(chan struct{}, 1)}
+	o := &Offset{waitCh: make(chan wait), doneCh: make(chan struct{}, 1), heap: rpheap.New()}
 	go o.process()
 	return o
 }
@@ -55,11 +58,32 @@ func (o *Offset) Wait(ctx context.Context, expectOffset int64) error {
 
 func (o *Offset) process() {
 
+	waits := make(map[int64][]chan struct{})
 	saveWait := func(w wait) {
+		ws := waits[w.expectOffset]
+		if ws == nil {
+			o.heap.Insert(w.expectOffset)
+			waits[w.expectOffset] = []chan struct{}{w.waiter}
+		} else {
+			waits[w.expectOffset] = append(ws, w.waiter)
+		}
 
 	}
 	notifyUntil := func(doneOffset int64) {
-
+		if o.heap.Size() == 0 {
+			return
+		}
+		for {
+			minOffset := o.heap.FindMin()
+			if minOffset <= doneOffset {
+				for _, w := range waits[minOffset] {
+					close(w)
+				}
+				o.heap.DeleteMin()
+			} else {
+				break
+			}
+		}
 	}
 	for {
 		select {
