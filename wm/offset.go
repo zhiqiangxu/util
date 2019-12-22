@@ -29,7 +29,17 @@ func NewOffset() *Offset {
 
 // Done for update doneOffset
 func (o *Offset) Done(offset int64) {
-	atomic.StoreInt64(&o.doneOffset, offset)
+	for {
+		doneOffset := atomic.LoadInt64(&o.doneOffset)
+		if doneOffset >= offset {
+			return
+		}
+
+		if atomic.CompareAndSwapInt64(&o.doneOffset, doneOffset, offset) {
+			break
+		}
+	}
+
 	select {
 	case o.doneCh <- struct{}{}:
 	default:
