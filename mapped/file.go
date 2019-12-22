@@ -330,7 +330,7 @@ func (f *File) doWrite(data []byte) (n int, err error) {
 
 func (f *File) commitLocked() {
 
-	if f.writeBuffer.Len() == 0 {
+	if /*returnWriteBuffer may have been called*/ f.writeBuffer == nil || f.writeBuffer.Len() == 0 {
 		return
 	}
 
@@ -364,10 +364,6 @@ func (f *File) Commit() {
 
 	f.cwmu.Lock()
 	defer f.cwmu.Unlock()
-	// returnWriteBuffer may have been called
-	if f.writeBuffer == nil {
-		return
-	}
 
 	f.commitLocked()
 
