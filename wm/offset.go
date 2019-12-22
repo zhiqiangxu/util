@@ -79,6 +79,7 @@ func (o *Offset) process() {
 				for _, w := range waits[minOffset] {
 					close(w)
 				}
+				delete(waits, minOffset)
 				o.heap.DeleteMin()
 			} else {
 				break
