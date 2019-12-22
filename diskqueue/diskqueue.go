@@ -260,12 +260,20 @@ func (q *Queue) updateSizeBuf(i int, size int) {
 	binary.BigEndian.PutUint32(q.sizeBuffs[4*i:], uint32(size))
 }
 
+const (
+	commitMinimumInterval = 1
+)
+
 func (q *Queue) handleCommit() {
 	if !q.conf.EnableWriteBuffer {
 		return
 	}
 
-	ticker := time.NewTicker(time.Second)
+	interval := commitMinimumInterval
+	if q.conf.CommitInterval > commitMinimumInterval {
+		interval = q.conf.CommitInterval
+	}
+	ticker := time.NewTicker(time.Second * time.Duration(interval))
 
 	for {
 		select {

@@ -364,6 +364,10 @@ func (f *File) Commit() {
 
 	f.cwmu.Lock()
 	defer f.cwmu.Unlock()
+	// returnWriteBuffer may have been called
+	if f.writeBuffer == nil {
+		return
+	}
 
 	f.commitLocked()
 
@@ -461,7 +465,9 @@ func (f *File) Close() (err error) {
 	}
 	f.fmap = nil
 
+	f.cwmu.Lock()
 	f.returnWriteBuffer()
+	f.cwmu.Unlock()
 	return
 }
 

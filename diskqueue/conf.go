@@ -9,4 +9,7 @@ type Conf struct {
 	MaxPutting         int
 	ByteArenaChunkSize int
 	EnableWriteBuffer  bool
+	// only valid when EnableWriteBuffer is true
+	// unit: second
+	CommitInterval int
 }

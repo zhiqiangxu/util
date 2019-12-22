@@ -105,7 +105,7 @@ func (qf *qfile) writeBuffers(buffs *net.Buffers) (n int64, err error) {
 }
 
 func (qf *qfile) WrotePosition() int64 {
-	return qf.mappedFile.GetWrotePosition()
+	return qf.startOffset + qf.mappedFile.GetWrotePosition()
 }
 
 func (qf *qfile) DoneWrite() {
