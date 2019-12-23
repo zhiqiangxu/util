@@ -26,8 +26,8 @@ type fileInterface interface {
 	ReadRLocked(offset int64, data []byte) (n int, err error)
 	RLock()
 	RUnlock()
-	Commit()
-	DoneWrite()
+	Commit() int64
+	DoneWrite() int64
 	MLock() (err error)
 	MUnlock() (err error)
 	IsFull() bool
@@ -328,9 +328,10 @@ func (f *File) doWrite(data []byte) (n int, err error) {
 
 }
 
-func (f *File) commitLocked() {
+func (f *File) commitLocked() (commitOffset int64) {
 
 	if /*returnWriteBuffer may have been called*/ f.writeBuffer == nil || f.writeBuffer.Len() == 0 {
+		commitOffset = atomic.LoadInt64(&f.wrotePosition)
 		return
 	}
 
@@ -339,7 +340,7 @@ func (f *File) commitLocked() {
 
 	if f.wmm {
 		copy(f.fmap[f.commitPosition:], f.writeBuffer.Bytes())
-		f.addAndGetCommitPosition(n)
+		commitOffset = f.addAndGetCommitPosition(n)
 		f.writeBuffer.Reset()
 		return
 	}
@@ -353,32 +354,33 @@ func (f *File) commitLocked() {
 		return true
 	}, time.Second)
 
-	f.addAndGetCommitPosition(n)
+	return f.addAndGetCommitPosition(n)
 }
 
 // Commit buffer to os if any
-func (f *File) Commit() {
+func (f *File) Commit() int64 {
 	if f.writeBuffer == nil {
-		return
+		return f.GetWrotePosition()
 	}
 
 	f.cwmu.Lock()
 	defer f.cwmu.Unlock()
 
-	f.commitLocked()
+	return f.commitLocked()
 
 }
 
 // DoneWrite = Commit + returnWriteBuffer
-func (f *File) DoneWrite() {
+func (f *File) DoneWrite() (commitOffset int64) {
 	if f.writeBuffer == nil {
+		commitOffset = f.GetWrotePosition()
 		return
 	}
 
 	f.cwmu.Lock()
 	defer f.cwmu.Unlock()
 
-	f.commitLocked()
+	commitOffset = f.commitLocked()
 
 	f.returnWriteBuffer()
 	return

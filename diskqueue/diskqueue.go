@@ -15,6 +15,7 @@ import (
 	"github.com/zhiqiangxu/util"
 	"github.com/zhiqiangxu/util/logger"
 	"github.com/zhiqiangxu/util/mapped"
+	"github.com/zhiqiangxu/util/wm"
 	"go.uber.org/zap"
 )
 
@@ -44,6 +45,7 @@ type Queue struct {
 	flock      sync.RWMutex
 	files      []*qfile
 	once       sync.Once
+	wm         *wm.Offset // maintains commit offset
 }
 
 const (
@@ -81,6 +83,7 @@ func New(conf Conf) (q *Queue, err error) {
 		writeBuffs: make(net.Buffers, 0, conf.WriteBatch*2),
 		sizeBuffs:  make([]byte, sizeLength*conf.WriteBatch),
 		doneCh:     make(chan struct{}),
+		wm:         wm.NewOffset(),
 	}
 	q.meta = newQueueMeta(&q.conf)
 	err = q.init()
@@ -148,7 +151,8 @@ func (q *Queue) createQfile() (err error) {
 		}
 	} else {
 		qf = q.files[len(q.files)-1]
-		qf.DoneWrite()
+		commitOffset := qf.DoneWrite()
+		q.wm.Done(commitOffset)
 		qf, err = createQfile(q, len(q.files), qf.WrotePosition())
 		if err != nil {
 			return
@@ -238,6 +242,9 @@ func (q *Queue) handleWrite() {
 			}, time.Second)
 
 			q.meta.UpdateFileStat(len(q.files)-1, len(q.writeReqs), startWrotePosition+totalN, NowNano())
+			if !q.conf.EnableWriteBuffer {
+				q.wm.Done(startWrotePosition + totalN)
+			}
 
 			q.writeBuffs = writeBuffs
 
@@ -281,7 +288,8 @@ func (q *Queue) handleCommit() {
 			q.flock.RLock()
 			qf := q.files[len(q.files)-1]
 			q.flock.RUnlock()
-			qf.Commit()
+			commitOffset := qf.Commit()
+			q.wm.Done(commitOffset)
 		case <-q.doneCh:
 			return
 		}

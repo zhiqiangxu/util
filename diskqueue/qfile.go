@@ -20,8 +20,8 @@ type qfileInterface interface {
 	Shrink() error
 	writeBuffers(buffs *net.Buffers) (int64, error)
 	WrotePosition() int64
-	DoneWrite()
-	Commit()
+	DoneWrite() int64
+	Commit() int64
 	Read(offset int64) ([]byte, error)
 	Sync() error
 	Close() error
@@ -108,12 +108,12 @@ func (qf *qfile) WrotePosition() int64 {
 	return qf.startOffset + qf.mappedFile.GetWrotePosition()
 }
 
-func (qf *qfile) DoneWrite() {
-	qf.mappedFile.DoneWrite()
+func (qf *qfile) DoneWrite() int64 {
+	return qf.startOffset + qf.mappedFile.DoneWrite()
 }
 
-func (qf *qfile) Commit() {
-	qf.mappedFile.Commit()
+func (qf *qfile) Commit() int64 {
+	return qf.startOffset + qf.mappedFile.Commit()
 }
 
 func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
