@@ -99,7 +99,8 @@ var (
 	errPoolForReadonly = errors.New("pool for readonly file")
 	// ErrWriteBeyond when write beyond
 	ErrWriteBeyond = errors.New("write beyond")
-	errReadBeyond  = errors.New("read beyond")
+	// ErrReadBeyond when read beyond
+	ErrReadBeyond = errors.New("read beyond")
 )
 
 // init仅在构造函数中调用，所以不需要考虑并发
@@ -427,7 +428,7 @@ func (f *File) Read(offset int64, data []byte) (int, error) {
 func (f *File) ReadRLocked(offset int64, data []byte) (n int, err error) {
 	readPosition := f.getReadPosition()
 	if offset > readPosition {
-		err = errReadBeyond
+		err = ErrReadBeyond
 		return
 	}
 

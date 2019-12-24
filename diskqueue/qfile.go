@@ -2,6 +2,7 @@ package diskqueue
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -15,7 +16,6 @@ import (
 )
 
 type qfileInterface interface {
-	NewIterator() *qfileIterator
 	IsInRange(offset int64) bool
 	Shrink() error
 	writeBuffers(buffs *net.Buffers) (int64, error)
@@ -23,6 +23,7 @@ type qfileInterface interface {
 	DoneWrite() int64
 	Commit() int64
 	Read(offset int64) ([]byte, error)
+	StreamRead(ctx context.Context, offset int64, ch chan []byte) error
 	Sync() error
 	Close() error
 }
@@ -84,10 +85,6 @@ func createQfile(q *Queue, idx int, startOffset int64) (qf *qfile, err error) {
 	return
 }
 
-func (qf *qfile) NewIterator() *qfileIterator {
-	return &qfileIterator{qf: qf}
-}
-
 // TODO enhance to check if offset is valid
 func (qf *qfile) IsInRange(offset int64) bool {
 	if offset < qf.startOffset {
@@ -141,6 +138,70 @@ func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
 	dataBytes = make([]byte, size)
 	_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
 	return
+}
+
+// when StreamRead returns , err is guaranteed not nil
+func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan []byte) (err error) {
+	fileOffset := offset - qf.startOffset
+	if fileOffset < 0 {
+		logger.Instance().Error("StreamRead negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
+		err = errInvalidOffset
+		return
+	}
+
+	qf.mappedFile.RLock()
+	defer qf.mappedFile.RUnlock()
+
+	isLatest := qf.idx == qf.q.meta.NumFiles()-1
+
+	for {
+		sizeBytes := make([]byte, sizeLength)
+		_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
+		if err != nil {
+			if !isLatest {
+				return
+			}
+			err = qf.q.wm.Wait(ctx, qf.startOffset+fileOffset+sizeLength)
+			if err != nil {
+				return
+			}
+			_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
+			if err != nil {
+				// 说明换文件了
+				return
+			}
+		}
+
+		size := int(binary.BigEndian.Uint32(sizeBytes))
+		if size > qf.q.conf.MaxMsgSize {
+			err = errInvalidOffset
+			return
+		}
+		dataBytes := make([]byte, size)
+		_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
+		if err != nil {
+			if !isLatest {
+				return
+			}
+			err = qf.q.wm.Wait(ctx, qf.startOffset+fileOffset+sizeLength+int64(size))
+			if err != nil {
+				return
+			}
+			_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
+			if err != nil {
+				// 说明换文件了
+				return
+			}
+		}
+
+		select {
+		case ch <- dataBytes:
+		case <-ctx.Done():
+		}
+		fileOffset += sizeLength + int64(size)
+
+	}
+
 }
 
 func (qf *qfile) Shrink() error {

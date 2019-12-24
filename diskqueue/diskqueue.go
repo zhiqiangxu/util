@@ -1,6 +1,7 @@
 package diskqueue
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -22,8 +23,7 @@ import (
 type queueInterface interface {
 	Put([]byte) (int64, error)
 	Read(offset int64) ([]byte, error)
-	StreamRead(offset int64) (chan []byte, error)
-	EndStream(ch chan []byte) error
+	StreamRead(ctx context.Context, offset int64) (chan []byte, error)
 	Close()
 	Delete() error
 }
@@ -251,7 +251,7 @@ func (q *Queue) handleWrite() {
 			// 全部写入成功
 			for _, req := range q.writeReqs {
 				req.result <- writeResult{offset: startWrotePosition}
-				startWrotePosition += int64(4) + int64(len(req.data))
+				startWrotePosition += int64(sizeLength) + int64(len(req.data))
 			}
 			totalN = 0
 
@@ -260,11 +260,11 @@ func (q *Queue) handleWrite() {
 }
 
 func (q *Queue) getSizeBuf(i int) []byte {
-	return q.sizeBuffs[4*i : 4*i+sizeLength]
+	return q.sizeBuffs[sizeLength*i : sizeLength*i+sizeLength]
 }
 
 func (q *Queue) updateSizeBuf(i int, size int) {
-	binary.BigEndian.PutUint32(q.sizeBuffs[4*i:], uint32(size))
+	binary.BigEndian.PutUint32(q.sizeBuffs[sizeLength*i:], uint32(size))
 }
 
 const (
@@ -359,7 +359,7 @@ func (q *Queue) Read(offset int64) (data []byte, err error) {
 }
 
 // StreamRead for stream read
-func (q *Queue) StreamRead(offset int64) (ch chan []byte, err error) {
+func (q *Queue) StreamRead(ctx context.Context, offset int64) (ch chan []byte, err error) {
 	err = q.checkCloseState()
 	if err != nil {
 		return
@@ -371,16 +371,47 @@ func (q *Queue) StreamRead(offset int64) (ch chan []byte, err error) {
 		return
 	}
 
-	q.flock.RLock()
-	// qf := q.files[idx]
-	q.flock.RUnlock()
+	ch = make(chan []byte)
+	util.GoFunc(&q.wg, func() {
+		// close the channel when done
+		defer close(ch)
+
+		q.flock.RLock()
+		qf := q.files[idx]
+		q.flock.RUnlock()
+
+		streamCtx, streamCancel := context.WithCancel(ctx)
+		defer streamCancel()
+
+		var streamWG sync.WaitGroup
+		util.GoFunc(&streamWG, func() {
+			for {
+				err := qf.StreamRead(streamCtx, offset, ch)
+				if err == context.Canceled {
+					return
+				}
+				if idx < q.meta.NumFiles()-1 {
+					offset = qf.WrotePosition()
+					idx++
+					q.flock.RLock()
+					qf = q.files[idx]
+					q.flock.RUnlock()
+				} else {
+					return
+				}
+			}
+		})
+
+		select {
+		case <-q.doneCh:
+			streamCancel()
+		case <-ctx.Done():
+		}
+		streamWG.Wait()
+
+	})
 
 	return
-}
-
-// EndStream for end stream
-func (q *Queue) EndStream(ch chan []byte) error {
-	return nil
 }
 
 var (
