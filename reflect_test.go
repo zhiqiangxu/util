@@ -54,7 +54,7 @@ func TestReflect(t *testing.T) {
 	}
 
 	{
-		sfields := StructFields(s, func(_ string, field reflect.Value) bool {
+		sfields := StructFieldValues(s, func(_ string, field reflect.Value) bool {
 			return field.Kind() == reflect.Int
 		})
 		assert.Assert(t, len(sfields) == 1)

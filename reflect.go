@@ -92,8 +92,8 @@ func InstancePtrByClone(v reflect.Value) interface{} {
 	return cv.Interface()
 }
 
-// StructFields for filter fields in struct
-func StructFields(s interface{}, filter func(name string, f reflect.Value) bool) (fields map[string]reflect.Value) {
+// StructFieldValues for manipulate field values
+func StructFieldValues(s interface{}, filter func(name string, f reflect.Value) bool) (fields map[string]reflect.Value) {
 	v, ok := s.(reflect.Value)
 	if !ok {
 		v = reflect.ValueOf(s)
@@ -111,6 +111,24 @@ func StructFields(s interface{}, filter func(name string, f reflect.Value) bool)
 		} else if filter(name, field) {
 			fields[name] = field
 		}
+	}
+
+	return
+}
+
+// StructFields for general struct field info
+func StructFields(s interface{}) (fields []reflect.StructField) {
+	v, ok := s.(reflect.Value)
+	if !ok {
+		v = reflect.ValueOf(s)
+	}
+	v = reflect.Indirect(v)
+
+	t := v.Type()
+	count := v.NumField()
+	for i := 0; i < count; i++ {
+		field := t.Field(i)
+		fields = append(fields, field)
 	}
 
 	return
