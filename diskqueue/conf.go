@@ -10,7 +10,7 @@ type Conf struct {
 	MaxMsgSize        int
 	MaxPutting        int
 	EnableWriteBuffer bool
-	PersistDuration   time.Duration
+	PersistDuration   time.Duration // GC works at qfile granularity
 	// only valid when EnableWriteBuffer is true
 	// unit: second
 	CommitInterval int

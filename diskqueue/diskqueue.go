@@ -26,6 +26,7 @@ type queueInterface interface {
 	Read(offset int64) ([]byte, error)
 	StreamRead(ctx context.Context, offset int64) (chan []byte, error)
 	Close()
+	GC() (int, error)
 	Delete() error
 }
 
@@ -475,6 +476,11 @@ func (q *Queue) Close() {
 		atomic.StoreUint32(&q.closeState, closed)
 	})
 
+	return
+}
+
+// GC removes expired qfiles
+func (q *Queue) GC() (n int, err error) {
 	return
 }
 
