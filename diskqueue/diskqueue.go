@@ -98,6 +98,11 @@ func (q *Queue) NumFiles() int {
 	return q.meta.NumFiles()
 }
 
+// Stat is proxy for meta
+func (q *Queue) Stat() QueueMeta {
+	return q.meta.Stat()
+}
+
 // FileMeta is proxy for meta
 func (q *Queue) FileMeta(idx int) FileMeta {
 	return q.meta.FileMeta(idx)

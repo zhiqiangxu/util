@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/zhiqiangxu/util"
 	"github.com/zhiqiangxu/util/logger"
 	"github.com/zhiqiangxu/util/mapped"
 	"go.uber.org/zap"
@@ -15,6 +16,7 @@ import (
 
 type queueMetaROInterface interface {
 	NumFiles() int
+	Stat() QueueMeta
 	FileMeta(idx int) FileMeta
 }
 
@@ -32,7 +34,10 @@ var _ queueMetaInterface = (*queueMeta)(nil)
 
 const (
 	maxSizeForMeta = 1024 * 1024
-	headerSize     = 4
+)
+
+var (
+	reservedHeaderSize = util.Max(256 /*should be enough*/, int(unsafe.Sizeof(QueueMeta{})))
 )
 
 // FileMeta for a single file
@@ -42,6 +47,12 @@ type FileMeta struct {
 	StartTime   int64
 	EndTime     int64
 	MsgCount    uint64
+}
+
+// QueueMeta for the queue
+type QueueMeta struct {
+	FileCount     uint32
+	MinValidIndex uint32
 }
 
 type queueMeta struct {
@@ -88,6 +99,13 @@ func (m *queueMeta) NumFiles() int {
 	return int(binary.BigEndian.Uint32(m.mappedBytes))
 }
 
+func (m *queueMeta) Stat() QueueMeta {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return QueueMeta{FileCount: binary.BigEndian.Uint32(m.mappedBytes), MinValidIndex: binary.BigEndian.Uint32(m.mappedBytes[4:])}
+}
+
 func (m *queueMeta) FileMeta(idx int) (fm FileMeta) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -97,7 +115,7 @@ func (m *queueMeta) FileMeta(idx int) (fm FileMeta) {
 		logger.Instance().Fatal("FileMeta idx over size", zap.Int("idx", idx), zap.Int("nFiles", nFiles))
 	}
 
-	offset := headerSize + int(unsafe.Sizeof(FileMeta{}))*idx
+	offset := reservedHeaderSize + int(unsafe.Sizeof(FileMeta{}))*idx
 	startOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset:]))
 	endOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+8:]))
 	startTime := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+16:]))
@@ -115,7 +133,7 @@ func (m *queueMeta) AddFile(f FileMeta) {
 
 	nFiles := binary.BigEndian.Uint32(m.mappedBytes)
 	binary.BigEndian.PutUint32(m.mappedBytes, nFiles+1)
-	offset := headerSize + int(unsafe.Sizeof(FileMeta{}))*int(nFiles)
+	offset := reservedHeaderSize + int(unsafe.Sizeof(FileMeta{}))*int(nFiles)
 	binary.BigEndian.PutUint64(m.mappedBytes[offset:], uint64(f.StartOffset))
 	binary.BigEndian.PutUint64(m.mappedBytes[offset+8:], uint64(f.EndOffset))
 	binary.BigEndian.PutUint64(m.mappedBytes[offset+16:], uint64(f.StartTime))
@@ -132,7 +150,7 @@ func (m *queueMeta) UpdateFileStat(idx, n int, endOffset, endTime int64) {
 		logger.Instance().Fatal("UpdateFileStat idx over size", zap.Int("idx", idx), zap.Int("nFiles", nFiles))
 	}
 
-	offset := headerSize + int(unsafe.Sizeof(FileMeta{}))*idx
+	offset := reservedHeaderSize + int(unsafe.Sizeof(FileMeta{}))*idx
 	endOffset0 := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+8:]))
 	startTime0 := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+16:]))
 	endTime0 := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+24:]))
@@ -167,7 +185,7 @@ func (m *queueMeta) LocateFile(readOffset int64) int {
 	// 二分查找
 	for start <= end {
 		target := start + (end-start)/2 // 防止溢出
-		offset := headerSize + int(unsafe.Sizeof(FileMeta{}))*target
+		offset := reservedHeaderSize + int(unsafe.Sizeof(FileMeta{}))*target
 		startOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset:]))
 		endOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+8:]))
 		switch {
