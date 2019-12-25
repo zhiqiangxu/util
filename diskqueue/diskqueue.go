@@ -44,18 +44,20 @@ type Queue struct {
 	writeBuffs net.Buffers
 	sizeBuffs  []byte
 	doneCh     chan struct{}
-	flock      sync.RWMutex
-	files      []*qfile
-	once       sync.Once
-	wm         *wm.Offset // maintains commit offset
+	// guards files,minValidIndex
+	flock         sync.RWMutex
+	files         []*qfile
+	minValidIndex int
+	once          sync.Once
+	wm            *wm.Offset // maintains commit offset
 }
 
 const (
-	defaultWriteBatch         = 100
-	defaultMaxMsgSize         = 512 * 1024 * 1024
-	defaultMaxPutting         = 10000
-	defaultByteArenaChunkSize = 100 * 1024 * 1024
-	sizeLength                = 4
+	defaultWriteBatch      = 100
+	defaultMaxMsgSize      = 512 * 1024 * 1024
+	defaultMaxPutting      = 10000
+	defaultPersistDuration = 3 * 24 * time.Hour
+	sizeLength             = 4
 )
 
 // New is ctor for Queue
@@ -63,6 +65,9 @@ func New(conf Conf) (q *Queue, err error) {
 	if conf.Directory == "" {
 		err = errEmptyDirectory
 		return
+	}
+	if conf.PersistDuration < time.Hour {
+		conf.PersistDuration = defaultPersistDuration
 	}
 
 	if conf.WriteBatch <= 0 {
@@ -124,10 +129,12 @@ func (q *Queue) init() (err error) {
 	}
 
 	// 加载qfile
-	nFiles := q.meta.NumFiles()
-	q.files = make([]*qfile, 0, nFiles)
+	stat := q.Stat()
+	nFiles := int(stat.FileCount)
+	q.minValidIndex = int(stat.MinValidIndex)
+	q.files = make([]*qfile, 0, nFiles-q.minValidIndex)
 	var qf *qfile
-	for i := 0; i < nFiles; i++ {
+	for i := q.minValidIndex; i < nFiles; i++ {
 		qf, err = openQfile(q, i, i == nFiles-1)
 		if err != nil {
 			return
@@ -142,6 +149,7 @@ func (q *Queue) init() (err error) {
 	}
 
 	// enough data, ready to go!
+
 	if len(q.files) == 0 {
 		err = q.createQfile()
 		if err != nil {
@@ -156,6 +164,14 @@ func (q *Queue) init() (err error) {
 	return nil
 }
 
+func (q *Queue) maxValidIndex() int {
+	return q.minValidIndex + len(q.files) - 1
+}
+
+func (q *Queue) nextIndex() int {
+	return q.minValidIndex + len(q.files)
+}
+
 func (q *Queue) createQfile() (err error) {
 	var qf *qfile
 	if len(q.files) == 0 {
@@ -167,7 +183,7 @@ func (q *Queue) createQfile() (err error) {
 		qf = q.files[len(q.files)-1]
 		commitOffset := qf.DoneWrite()
 		q.wm.Done(commitOffset)
-		qf, err = createQfile(q, len(q.files), qf.WrotePosition())
+		qf, err = createQfile(q, q.nextIndex(), qf.WrotePosition())
 		if err != nil {
 			return
 		}
@@ -200,7 +216,7 @@ func (q *Queue) handleWrite() {
 		wroteN, totalN int64
 	)
 
-	startFM := q.meta.FileMeta(len(q.files) - 1)
+	startFM := q.meta.FileMeta(q.maxValidIndex())
 	startWrotePosition := startFM.EndOffset
 
 	for {
@@ -255,7 +271,7 @@ func (q *Queue) handleWrite() {
 				return true
 			}, time.Second)
 
-			q.meta.UpdateFileStat(len(q.files)-1, len(q.writeReqs), startWrotePosition+totalN, NowNano())
+			q.meta.UpdateFileStat(q.maxValidIndex(), len(q.writeReqs), startWrotePosition+totalN, NowNano())
 			if !q.conf.EnableWriteBuffer {
 				q.wm.Done(startWrotePosition + totalN)
 			}
@@ -350,6 +366,14 @@ func (q *Queue) Put(data []byte) (offset int64, err error) {
 
 }
 
+func (q *Queue) qfByIdx(idx int) *qfile {
+	fileIndex := idx - q.minValidIndex
+	if fileIndex < 0 {
+		return nil
+	}
+	return q.files[fileIndex]
+}
+
 // ReadFrom for read from offset
 func (q *Queue) Read(offset int64) (data []byte, err error) {
 	err = q.checkCloseState()
@@ -364,8 +388,12 @@ func (q *Queue) Read(offset int64) (data []byte, err error) {
 	}
 
 	q.flock.RLock()
-	qf := q.files[idx]
+	qf := q.qfByIdx(idx)
 	q.flock.RUnlock()
+	if qf == nil {
+		err = errInvalidOffset
+		return
+	}
 
 	data, err = qf.Read(offset)
 
@@ -385,14 +413,18 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (ch chan []byte, e
 		return
 	}
 
+	q.flock.RLock()
+	qf := q.qfByIdx(idx)
+	q.flock.RUnlock()
+	if qf == nil {
+		err = errInvalidOffset
+		return
+	}
+
 	ch = make(chan []byte)
 	util.GoFunc(&q.wg, func() {
 		// close the channel when done
 		defer close(ch)
-
-		q.flock.RLock()
-		qf := q.files[idx]
-		q.flock.RUnlock()
 
 		streamCtx, streamCancel := context.WithCancel(ctx)
 		defer streamCancel()
@@ -408,8 +440,11 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (ch chan []byte, e
 					offset = qf.WrotePosition()
 					idx++
 					q.flock.RLock()
-					qf = q.files[idx]
+					qf = q.qfByIdx(idx)
 					q.flock.RUnlock()
+					if qf == nil {
+						logger.Instance().Fatal("qfByIdx nil", zap.Int("idx", idx))
+					}
 				} else {
 					return
 				}
@@ -486,6 +521,21 @@ func (q *Queue) Close() {
 
 // GC removes expired qfiles
 func (q *Queue) GC() (n int, err error) {
+	stat := q.Stat()
+	maxIdx := q.NumFiles() - 1
+	idx := int(stat.MinValidIndex)
+	if idx >= maxIdx {
+		return
+	}
+	fileMeta := q.FileMeta(idx)
+
+	fileEndTime := time.Unix(0, fileMeta.EndTime)
+	if time.Now().Sub(fileEndTime) < q.conf.PersistDuration {
+		return
+	}
+
+	// can GC
+
 	return
 }
 

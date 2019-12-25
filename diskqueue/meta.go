@@ -179,7 +179,7 @@ func (m *queueMeta) LocateFile(readOffset int64) int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	start := 0
+	start := int(binary.BigEndian.Uint32(m.mappedBytes[4:]))
 	end := int(binary.BigEndian.Uint32(m.mappedBytes) - 1)
 
 	// 二分查找
