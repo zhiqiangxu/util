@@ -13,10 +13,14 @@ import (
 	"go.uber.org/zap"
 )
 
-type queueMetaInterface interface {
-	Init() error
+type queueMetaROInterface interface {
 	NumFiles() int
 	FileMeta(idx int) FileMeta
+}
+
+type queueMetaInterface interface {
+	queueMetaROInterface
+	Init() error
 	AddFile(f FileMeta)
 	UpdateFileStat(idx, n int, endOffset, endTime int64)
 	LocateFile(readOffset int64) int
@@ -98,9 +102,11 @@ func (m *queueMeta) FileMeta(idx int) (fm FileMeta) {
 	endOffset := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+8:]))
 	startTime := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+16:]))
 	endTime := int64(binary.BigEndian.Uint64(m.mappedBytes[offset+24:]))
+	msgCount := binary.BigEndian.Uint64(m.mappedBytes[offset+32:])
 
-	fm = FileMeta{StartOffset: startOffset, EndOffset: endOffset, StartTime: startTime, EndTime: endTime}
+	fm = FileMeta{StartOffset: startOffset, EndOffset: endOffset, StartTime: startTime, EndTime: endTime, MsgCount: msgCount}
 	return
+
 }
 
 func (m *queueMeta) AddFile(f FileMeta) {
@@ -144,7 +150,7 @@ func (m *queueMeta) UpdateFileStat(idx, n int, endOffset, endTime int64) {
 		binary.BigEndian.PutUint64(m.mappedBytes[offset+24:], uint64(endTime))
 	}
 
-	binary.BigEndian.PutUint64(m.mappedBytes[offset+32:], msgCount0+1)
+	binary.BigEndian.PutUint64(m.mappedBytes[offset+32:], msgCount0+uint64(n))
 
 	return
 

@@ -15,7 +15,8 @@ func TestQueue(t *testing.T) {
 
 	testData := []byte("abcd")
 
-	for i := 0; i < 1000; i++ {
+	n := 1000
+	for i := 0; i < n; i++ {
 		offset, err := q.Put(testData)
 		assert.Assert(t, err == nil)
 
@@ -24,9 +25,11 @@ func TestQueue(t *testing.T) {
 		assert.Assert(t, err == nil && bytes.Equal(readData, testData), err)
 	}
 
+	assert.Assert(t, q.NumFiles() == 1 && q.FileMeta(0).MsgCount == uint64(n))
+
 	ch, err := q.StreamRead(context.Background(), 0)
 	assert.Assert(t, err == nil)
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < n; i++ {
 		readData := <-ch
 		assert.Assert(t, bytes.Equal(readData, testData))
 	}

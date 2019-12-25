@@ -21,6 +21,7 @@ import (
 )
 
 type queueInterface interface {
+	queueMetaROInterface
 	Put([]byte) (int64, error)
 	Read(offset int64) ([]byte, error)
 	StreamRead(ctx context.Context, offset int64) (chan []byte, error)
@@ -72,9 +73,6 @@ func New(conf Conf) (q *Queue, err error) {
 	if conf.MaxPutting <= 0 {
 		conf.MaxPutting = defaultMaxPutting
 	}
-	if conf.ByteArenaChunkSize <= 0 {
-		conf.ByteArenaChunkSize = defaultByteArenaChunkSize
-	}
 
 	q = &Queue{
 		conf:       conf,
@@ -93,6 +91,16 @@ func New(conf Conf) (q *Queue, err error) {
 const (
 	dirPerm = 0770
 )
+
+// NumFiles is proxy for meta
+func (q *Queue) NumFiles() int {
+	return q.meta.NumFiles()
+}
+
+// FileMeta is proxy for meta
+func (q *Queue) FileMeta(idx int) FileMeta {
+	return q.meta.FileMeta(idx)
+}
 
 // init the queue
 func (q *Queue) init() (err error) {
