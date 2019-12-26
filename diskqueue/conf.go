@@ -1,6 +1,9 @@
 package diskqueue
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // Conf for diskqueue
 type Conf struct {
@@ -10,8 +13,11 @@ type Conf struct {
 	MaxMsgSize        int
 	MaxPutting        int
 	EnableWriteBuffer bool
+	MaxFileSize       int64
 	PersistDuration   time.Duration // GC works at qfile granularity
-	// only valid when EnableWriteBuffer is true
+	// below only valid when EnableWriteBuffer is true
 	// unit: second
-	CommitInterval int
+	CommitInterval  int
+	WriteBufferPool *sync.Pool
+	writeBufferPool *sync.Pool
 }

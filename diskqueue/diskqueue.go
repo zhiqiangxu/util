@@ -1,6 +1,7 @@
 package diskqueue
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -69,6 +70,9 @@ func New(conf Conf) (q *Queue, err error) {
 	if conf.PersistDuration < time.Hour {
 		conf.PersistDuration = defaultPersistDuration
 	}
+	if conf.MaxFileSize <= 0 {
+		conf.MaxFileSize = qfileDefaultSize
+	}
 
 	if conf.WriteBatch <= 0 {
 		conf.WriteBatch = defaultWriteBatch
@@ -101,6 +105,25 @@ const (
 // NumFiles is proxy for meta
 func (q *Queue) NumFiles() int {
 	return q.meta.NumFiles()
+}
+
+func (q *Queue) writeBufferPool() *sync.Pool {
+	if !q.conf.EnableWriteBuffer {
+		return nil
+	}
+	if q.conf.WriteBufferPool != nil {
+		return q.conf.WriteBufferPool
+	} else if q.conf.writeBufferPool != nil {
+		return q.conf.writeBufferPool
+	} else {
+		pool := &sync.Pool{
+			New: func() interface{} {
+				return bytes.NewBuffer(make([]byte, q.conf.MaxFileSize))
+			},
+		}
+		q.conf.writeBufferPool = pool
+		return pool
+	}
 }
 
 // Stat is proxy for meta

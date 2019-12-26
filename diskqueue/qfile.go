@@ -1,7 +1,6 @@
 package diskqueue
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -37,8 +36,8 @@ type qfile struct {
 }
 
 const (
-	qfSubDir  = "qf"
-	qfileSize = 1024 * 1024 * 1024
+	qfSubDir         = "qf"
+	qfileDefaultSize = 1024 * 1024 * 1024
 )
 
 var _ qfileInterface = (*qfile)(nil)
@@ -52,26 +51,20 @@ func openQfile(q *Queue, idx int, isLatest bool) (qf *qfile, err error) {
 
 	qf = &qfile{q: q, idx: idx, startOffset: fm.StartOffset}
 	var pool *sync.Pool
-	if isLatest && q.conf.EnableWriteBuffer {
-		pool = &writerBufferPool
+	if isLatest {
+		pool = q.writeBufferPool()
 	}
 	qf.mappedFile, err = mapped.OpenFile(qfilePath(fm.StartOffset, &q.conf), int64(fm.EndOffset-fm.StartOffset), os.O_RDWR, q.conf.WriteMmap, pool)
 	return
-}
-
-var writerBufferPool = sync.Pool{
-	New: func() interface{} {
-		return bytes.NewBuffer(make([]byte, qfileSize))
-	},
 }
 
 func createQfile(q *Queue, idx int, startOffset int64) (qf *qfile, err error) {
 	qf = &qfile{q: q, idx: idx, startOffset: startOffset}
 	var pool *sync.Pool
 	if q.conf.EnableWriteBuffer {
-		pool = &writerBufferPool
+		pool = q.writeBufferPool()
 	}
-	qf.mappedFile, err = mapped.CreateFile(qfilePath(startOffset, &q.conf), qfileSize, q.conf.WriteMmap, pool)
+	qf.mappedFile, err = mapped.CreateFile(qfilePath(startOffset, &q.conf), q.conf.MaxFileSize, q.conf.WriteMmap, pool)
 	if err != nil {
 		return
 	}
