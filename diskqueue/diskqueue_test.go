@@ -34,6 +34,9 @@ func TestQueue(t *testing.T) {
 		assert.Assert(t, bytes.Equal(readData, testData))
 	}
 
+	n, err = q.GC()
+	assert.Assert(t, err == nil && n == 0)
+
 	err = q.Delete()
 	assert.Assert(t, err == nil)
 

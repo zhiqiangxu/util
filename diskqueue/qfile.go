@@ -8,14 +8,19 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/zhiqiangxu/util/logger"
 	"github.com/zhiqiangxu/util/mapped"
 	"go.uber.org/zap"
 )
 
+type refCountInterface interface {
+	IncrRef() int32
+	DecrRef() int32
+}
 type qfileInterface interface {
-	IsInRange(offset int64) bool
+	refCountInterface
 	Shrink() error
 	writeBuffers(buffs *net.Buffers) (int64, error)
 	WrotePosition() int64
@@ -24,11 +29,11 @@ type qfileInterface interface {
 	Read(offset int64) ([]byte, error)
 	StreamRead(ctx context.Context, offset int64, ch chan []byte) error
 	Sync() error
-	Close() error
 }
 
 // qfile has no write-write races, but has read-write races
 type qfile struct {
+	ref         int32
 	q           *Queue
 	idx         int
 	startOffset int64
@@ -49,7 +54,7 @@ func qfilePath(startOffset int64, conf *Conf) string {
 func openQfile(q *Queue, idx int, isLatest bool) (qf *qfile, err error) {
 	fm := q.meta.FileMeta(idx)
 
-	qf = &qfile{q: q, idx: idx, startOffset: fm.StartOffset}
+	qf = &qfile{q: q, idx: idx, startOffset: fm.StartOffset, ref: 1}
 	var pool *sync.Pool
 	if isLatest {
 		pool = q.writeBufferPool()
@@ -59,7 +64,7 @@ func openQfile(q *Queue, idx int, isLatest bool) (qf *qfile, err error) {
 }
 
 func createQfile(q *Queue, idx int, startOffset int64) (qf *qfile, err error) {
-	qf = &qfile{q: q, idx: idx, startOffset: startOffset}
+	qf = &qfile{q: q, idx: idx, startOffset: startOffset, ref: 1}
 	var pool *sync.Pool
 	if q.conf.EnableWriteBuffer {
 		pool = q.writeBufferPool()
@@ -78,13 +83,27 @@ func createQfile(q *Queue, idx int, startOffset int64) (qf *qfile, err error) {
 	return
 }
 
-// TODO enhance to check if offset is valid
-func (qf *qfile) IsInRange(offset int64) bool {
-	if offset < qf.startOffset {
-		return false
+func (qf *qfile) IncrRef() int32 {
+	return atomic.AddInt32(&qf.ref, 1)
+}
+
+func (qf *qfile) DecrRef() (newRef int32) {
+	newRef = atomic.AddInt32(&qf.ref, -1)
+	if newRef > 0 {
+		return
 	}
 
-	return offset-qf.startOffset < qf.mappedFile.GetWrotePosition()
+	err := qf.close()
+	if err != nil {
+		logger.Instance().Error("qf.close", zap.Error(err))
+	}
+
+	err = qf.remove()
+	if err != nil {
+		logger.Instance().Error("qf.remove", zap.Error(err))
+	}
+
+	return
 }
 
 func (qf *qfile) writeBuffers(buffs *net.Buffers) (n int64, err error) {
@@ -202,9 +221,14 @@ func (qf *qfile) Shrink() error {
 }
 
 func (qf *qfile) Sync() error {
-	return nil
+	return qf.mappedFile.Sync()
 }
 
-func (qf *qfile) Close() error {
-	return nil
+func (qf *qfile) close() error {
+	return qf.mappedFile.Close()
+}
+
+func (qf *qfile) remove() (err error) {
+	err = qf.mappedFile.Remove()
+	return
 }

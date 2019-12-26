@@ -36,6 +36,7 @@ var _ queueInterface = (*Queue)(nil)
 // Queue for diskqueue
 type Queue struct {
 	putting    int32
+	gcFlag     uint32
 	closeState uint32
 	wg         sync.WaitGroup
 	meta       *queueMeta
@@ -45,6 +46,7 @@ type Queue struct {
 	writeBuffs net.Buffers
 	sizeBuffs  []byte
 	doneCh     chan struct{}
+	gcCh       chan *gcRequest
 	// guards files,minValidIndex
 	flock         sync.RWMutex
 	files         []*qfile
@@ -91,6 +93,7 @@ func New(conf Conf) (q *Queue, err error) {
 		writeBuffs: make(net.Buffers, 0, conf.WriteBatch*2),
 		sizeBuffs:  make([]byte, sizeLength*conf.WriteBatch),
 		doneCh:     make(chan struct{}),
+		gcCh:       make(chan *gcRequest),
 		wm:         wm.NewOffset(),
 	}
 	q.meta = newQueueMeta(&q.conf)
@@ -181,7 +184,7 @@ func (q *Queue) init() (err error) {
 		}
 	}
 
-	util.GoFunc(&q.wg, q.handleWrite)
+	util.GoFunc(&q.wg, q.handleWriteAndGC)
 	util.GoFunc(&q.wg, q.handleCommit)
 
 	return nil
@@ -226,17 +229,28 @@ type writeRequest struct {
 	result chan writeResult
 }
 
+type gcResult struct {
+	n   int
+	err error
+}
+
+type gcRequest struct {
+	result chan gcResult
+}
+
 var wreqPool = sync.Pool{New: func() interface{} {
 	return &writeRequest{result: make(chan writeResult, 1)}
 }}
 
 // dedicated G so that write is serial
-func (q *Queue) handleWrite() {
+func (q *Queue) handleWriteAndGC() {
 	var (
-		wreq           *writeRequest
+		wReq           *writeRequest
+		gcReq          *gcRequest
 		qf             *qfile
 		err            error
 		wroteN, totalN int64
+		gcN            int
 	)
 
 	startFM := q.meta.FileMeta(q.maxValidIndex())
@@ -246,23 +260,28 @@ func (q *Queue) handleWrite() {
 		select {
 		case <-q.doneCh:
 			return
-		case wreq = <-q.writeCh:
+		case gcReq = <-q.gcCh:
+
+			gcN, err = q.gc()
+			gcReq.result <- gcResult{n: gcN, err: err}
+
+		case wReq = <-q.writeCh:
 			q.writeReqs = q.writeReqs[:0]
 			q.writeBuffs = q.writeBuffs[:0]
-			q.writeReqs = append(q.writeReqs, wreq)
-			q.updateSizeBuf(0, len(wreq.data))
+			q.writeReqs = append(q.writeReqs, wReq)
+			q.updateSizeBuf(0, len(wReq.data))
 			q.writeBuffs = append(q.writeBuffs, q.getSizeBuf(0))
-			q.writeBuffs = append(q.writeBuffs, wreq.data)
+			q.writeBuffs = append(q.writeBuffs, wReq.data)
 
 			// collect more data
 		BatchLoop:
 			for i := 0; i < q.conf.WriteBatch-1; i++ {
 				select {
-				case wreq = <-q.writeCh:
-					q.writeReqs = append(q.writeReqs, wreq)
-					q.updateSizeBuf(i+1, len(wreq.data))
+				case wReq = <-q.writeCh:
+					q.writeReqs = append(q.writeReqs, wReq)
+					q.updateSizeBuf(i+1, len(wReq.data))
 					q.writeBuffs = append(q.writeBuffs, q.getSizeBuf(i+1))
-					q.writeBuffs = append(q.writeBuffs, wreq.data)
+					q.writeBuffs = append(q.writeBuffs, wReq.data)
 				default:
 					break BatchLoop
 				}
@@ -280,7 +299,7 @@ func (q *Queue) handleWrite() {
 					// 写超了，需要新开文件
 					err = q.createQfile()
 					if err != nil {
-						logger.Instance().Error("handleWrite createQfile", zap.Error(err))
+						logger.Instance().Error("handleWriteAndGC createQfile", zap.Error(err))
 					} else {
 						qf = q.files[len(q.files)-1]
 						wroteN, err = qf.writeBuffers(&q.writeBuffs)
@@ -288,7 +307,7 @@ func (q *Queue) handleWrite() {
 					}
 				}
 				if err != nil {
-					logger.Instance().Error("handleWrite WriteTo", zap.Error(err))
+					logger.Instance().Error("handleWriteAndGC WriteTo", zap.Error(err))
 					return false
 				}
 				return true
@@ -412,11 +431,23 @@ func (q *Queue) Read(offset int64) (data []byte, err error) {
 
 	q.flock.RLock()
 	qf := q.qfByIdx(idx)
-	q.flock.RUnlock()
 	if qf == nil {
+		q.flock.RUnlock()
 		err = errInvalidOffset
 		return
 	}
+
+	rfc := qf.IncrRef()
+
+	q.flock.RUnlock()
+
+	// already deleted
+	if rfc == 1 {
+		err = errInvalidOffset
+		return
+	}
+
+	defer qf.DecrRef()
 
 	data, err = qf.Read(offset)
 
@@ -438,11 +469,23 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (ch chan []byte, e
 
 	q.flock.RLock()
 	qf := q.qfByIdx(idx)
-	q.flock.RUnlock()
 	if qf == nil {
+		q.flock.RUnlock()
 		err = errInvalidOffset
 		return
 	}
+
+	rfc := qf.IncrRef()
+
+	q.flock.RUnlock()
+
+	// already deleted
+	if rfc == 1 {
+		err = errInvalidOffset
+		return
+	}
+
+	defer qf.DecrRef()
 
 	ch = make(chan []byte)
 	util.GoFunc(&q.wg, func() {
@@ -462,12 +505,18 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (ch chan []byte, e
 				if idx < q.meta.NumFiles()-1 {
 					offset = qf.WrotePosition()
 					idx++
+					qf.DecrRef()
 					q.flock.RLock()
 					qf = q.qfByIdx(idx)
-					q.flock.RUnlock()
 					if qf == nil {
 						logger.Instance().Fatal("qfByIdx nil", zap.Int("idx", idx))
 					}
+					rfc := qf.IncrRef()
+					q.flock.RUnlock()
+					if rfc == 1 {
+						logger.Instance().Fatal("StreamRead rfc == 1", zap.Int("idx", idx))
+					}
+
 				} else {
 					return
 				}
@@ -542,24 +591,78 @@ func (q *Queue) Close() {
 	return
 }
 
+var (
+	// ErrGCing when already gc
+	ErrGCing = errors.New("already CGing")
+)
+
 // GC removes expired qfiles
 func (q *Queue) GC() (n int, err error) {
+	err = q.checkCloseState()
+	if err != nil {
+		return
+	}
+
+	swapped := atomic.CompareAndSwapUint32(&q.gcFlag, 0, 1)
+	if !swapped {
+		err = ErrGCing
+		return
+	}
+	defer atomic.StoreUint32(&q.gcFlag, 0)
+
+	gcReq := &gcRequest{result: make(chan gcResult, 1)}
+
+	select {
+	case q.gcCh <- gcReq:
+		select {
+		case <-q.doneCh:
+			err = errAlreadyClosed
+			return
+		case gcResult := <-gcReq.result:
+			n, err = gcResult.n, gcResult.err
+			return
+		}
+	case <-q.doneCh:
+		err = errAlreadyClosed
+		return
+	}
+}
+
+func (q *Queue) gc() (n int, err error) {
 	stat := q.Stat()
 	maxIdx := q.NumFiles() - 1
 	idx := int(stat.MinValidIndex)
-	if idx >= maxIdx {
-		return
+
+	for {
+		if idx >= maxIdx {
+			return
+		}
+		fileMeta := q.FileMeta(idx)
+
+		fileEndTime := time.Unix(0, fileMeta.EndTime)
+		if time.Now().Sub(fileEndTime) < q.conf.PersistDuration {
+			return
+		}
+
+		// can GC
+
+		q.flock.Lock()
+
+		qf := q.qfByIdx(idx)
+		q.minValidIndex = idx + 1
+		q.files[0] = nil
+		q.files = q.files[1:]
+
+		q.flock.Unlock()
+
+		q.meta.UpdateMinValidIndex(uint32(idx))
+		qf.DecrRef()
+
+		idx++
+		n++
+
 	}
-	fileMeta := q.FileMeta(idx)
 
-	fileEndTime := time.Unix(0, fileMeta.EndTime)
-	if time.Now().Sub(fileEndTime) < q.conf.PersistDuration {
-		return
-	}
-
-	// can GC
-
-	return
 }
 
 // Delete the queue

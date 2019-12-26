@@ -26,6 +26,7 @@ type queueMetaInterface interface {
 	AddFile(f FileMeta)
 	UpdateFileStat(idx, n int, endOffset, endTime int64)
 	LocateFile(readOffset int64) int
+	UpdateMinValidIndex(minValidIndex uint32)
 	Sync() error
 	Close() error
 }
@@ -200,6 +201,12 @@ func (m *queueMeta) LocateFile(readOffset int64) int {
 
 	return -1
 
+}
+
+func (m *queueMeta) UpdateMinValidIndex(minValidIndex uint32) {
+	m.mu.Lock()
+	binary.BigEndian.PutUint32(m.mappedBytes[4:], minValidIndex)
+	m.mu.Unlock()
 }
 
 func (m *queueMeta) Sync() error {

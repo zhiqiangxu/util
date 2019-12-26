@@ -35,6 +35,7 @@ type fileInterface interface {
 	Sync() (err error)
 	LastModified() (t time.Time, err error)
 	Close() (err error)
+	Remove() error
 	MappedBytes() []byte
 }
 
@@ -468,6 +469,11 @@ func (f *File) Close() (err error) {
 	f.returnWriteBuffer()
 	f.cwmu.Unlock()
 	return
+}
+
+// Remove the file
+func (f *File) Remove() error {
+	return os.Remove(f.fileName)
 }
 
 // MappedBytes is valid until next Resize
