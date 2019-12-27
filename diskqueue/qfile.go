@@ -26,18 +26,20 @@ type qfileInterface interface {
 	WrotePosition() int64
 	DoneWrite() int64
 	Commit() int64
-	Read(offset int64) ([]byte, error)
+	Read(ctx context.Context, offset int64) ([]byte, error)
 	StreamRead(ctx context.Context, offset int64, ch chan []byte) error
 	Sync() error
 }
 
 // qfile has no write-write races, but has read-write races
 type qfile struct {
-	ref         int32
-	q           *Queue
-	idx         int
-	startOffset int64
-	mappedFile  *mapped.File
+	ref            int32
+	q              *Queue
+	idx            int
+	startOffset    int64
+	mappedFile     *mapped.File
+	notLatest      bool
+	readLockedFunc func(ctx context.Context, r *QfileSizeReader) (dataBytes []byte, err error)
 }
 
 const (
@@ -60,6 +62,11 @@ func openQfile(q *Queue, idx int, isLatest bool) (qf *qfile, err error) {
 		pool = q.writeBufferPool()
 	}
 	qf.mappedFile, err = mapped.OpenFile(qfilePath(fm.StartOffset, &q.conf), int64(fm.EndOffset-fm.StartOffset), os.O_RDWR, q.conf.WriteMmap, pool)
+	if err != nil {
+		return
+	}
+	qf.init()
+
 	return
 }
 
@@ -73,6 +80,7 @@ func createQfile(q *Queue, idx int, startOffset int64) (qf *qfile, err error) {
 	if err != nil {
 		return
 	}
+	qf.init()
 
 	if q.meta.NumFiles() != idx {
 		logger.Instance().Fatal("createQfile idx != NumFiles", zap.Int("NumFiles", q.meta.NumFiles()), zap.Int("idx", idx))
@@ -80,7 +88,16 @@ func createQfile(q *Queue, idx int, startOffset int64) (qf *qfile, err error) {
 
 	nowNano := NowNano()
 	q.meta.AddFile(FileMeta{StartOffset: startOffset, EndOffset: startOffset, StartTime: nowNano, EndTime: nowNano})
+
 	return
+}
+
+func (qf *qfile) init() {
+	if qf.q.conf.customDecoder {
+		qf.readLockedFunc = qf.readLockedCustom
+	} else {
+		qf.readLockedFunc = qf.readLockedDefault
+	}
 }
 
 func (qf *qfile) IncrRef() int32 {
@@ -125,92 +142,113 @@ func (qf *qfile) Commit() int64 {
 	return qf.startOffset + qf.mappedFile.Commit()
 }
 
-func (qf *qfile) Read(offset int64) (dataBytes []byte, err error) {
-	fileOffset := offset - qf.startOffset
-	if fileOffset < 0 {
-		logger.Instance().Error("Read negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
-		err = errInvalidOffset
-		return
+// isLatest can be called concurrently :)
+func (qf *qfile) isLatest() bool {
+	if qf.notLatest {
+		return false
 	}
+	isLatest := qf.idx == qf.q.meta.NumFiles()-1
+	if !isLatest {
+		qf.notLatest = true
+	}
+	return isLatest
+}
 
-	qf.mappedFile.RLock()
-	defer qf.mappedFile.RUnlock()
+func (qf *qfile) readLockedCustom(ctx context.Context, r *QfileSizeReader) (dataBytes []byte, err error) {
 
-	sizeBytes := make([]byte, sizeLength)
-	_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
+	dataBytes, err = qf.q.conf.CustomDecoder(ctx, r)
+	return
+}
+
+func (qf *qfile) readLockedDefault(ctx context.Context, r *QfileSizeReader) (dataBytes []byte, err error) {
+
+	var sizeBytes [sizeLength]byte
+	err = r.Read(ctx, sizeBytes[:])
 	if err != nil {
 		return
 	}
 
-	size := int(binary.BigEndian.Uint32(sizeBytes))
+	size := int(binary.BigEndian.Uint32(sizeBytes[:]))
 	if size > qf.q.conf.MaxMsgSize {
 		err = errInvalidOffset
 		return
 	}
+
 	dataBytes = make([]byte, size)
-	_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
+	err = r.Read(ctx, dataBytes)
 	return
 }
 
-// when StreamRead returns , err is guaranteed not nil
-func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan []byte) (err error) {
-	fileOffset := offset - qf.startOffset
+func (qf *qfile) calcFileOffset(offset int64) (fileOffset int64, err error) {
+	fileOffset = offset - qf.startOffset
 	if fileOffset < 0 {
-		logger.Instance().Error("StreamRead negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
+		logger.Instance().Error("calcFileOffset negative fileOffset", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
 		err = errInvalidOffset
+		return
+	}
+
+	return
+}
+
+func (qf *qfile) Read(ctx context.Context, offset int64) (data []byte, err error) {
+	fileOffset, err := qf.calcFileOffset(offset)
+	if err != nil {
 		return
 	}
 
 	qf.mappedFile.RLock()
 	defer qf.mappedFile.RUnlock()
 
-	isLatest := qf.idx == qf.q.meta.NumFiles()-1
+	r := qf.getSizeReader(fileOffset)
+	data, err = qf.readLockedFunc(ctx, r)
+	qf.putSizeReader(r)
+	return
+}
 
+var sizeReaderPool = sync.Pool{
+	New: func() interface{} {
+		return &QfileSizeReader{}
+	},
+}
+
+func (qf *qfile) getSizeReader(fileOffset int64) *QfileSizeReader {
+	r := sizeReaderPool.Get().(*QfileSizeReader)
+	r.qf = qf
+	r.fileOffset = fileOffset
+	r.isLatest = qf.isLatest()
+	return r
+}
+
+func (qf *qfile) putSizeReader(r *QfileSizeReader) {
+	r.qf = nil
+	sizeReaderPool.Put(r)
+}
+
+// when StreamRead returns , err is guaranteed not nil
+func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan []byte) (err error) {
+	fileOffset, err := qf.calcFileOffset(offset)
+	if err != nil {
+		return
+	}
+
+	qf.mappedFile.RLock()
+	defer qf.mappedFile.RUnlock()
+
+	r := qf.getSizeReader(fileOffset)
+	defer qf.putSizeReader(r)
+
+	var dataBytes []byte
 	for {
-		sizeBytes := make([]byte, sizeLength)
-		_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
-		if err != nil {
-			if !isLatest {
-				return
-			}
-			err = qf.q.wm.Wait(ctx, qf.startOffset+fileOffset+sizeLength)
-			if err != nil {
-				return
-			}
-			_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
-			if err != nil {
-				// 说明换文件了
-				return
-			}
-		}
 
-		size := int(binary.BigEndian.Uint32(sizeBytes))
-		if size > qf.q.conf.MaxMsgSize {
-			err = errInvalidOffset
-			return
-		}
-		dataBytes := make([]byte, size)
-		_, err = qf.mappedFile.ReadRLocked(fileOffset+sizeLength, dataBytes)
+		dataBytes, err = qf.readLockedFunc(ctx, r)
 		if err != nil {
-			if !isLatest {
-				return
-			}
-			err = qf.q.wm.Wait(ctx, qf.startOffset+fileOffset+sizeLength+int64(size))
-			if err != nil {
-				return
-			}
-			_, err = qf.mappedFile.ReadRLocked(fileOffset, sizeBytes)
-			if err != nil {
-				// 说明换文件了
-				return
-			}
+			return
 		}
 
 		select {
 		case ch <- dataBytes:
 		case <-ctx.Done():
 		}
-		fileOffset += sizeLength + int64(size)
 
 	}
 

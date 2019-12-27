@@ -1,9 +1,13 @@
 package diskqueue
 
 import (
+	"context"
 	"sync"
 	"time"
 )
+
+// CustomDecoder for customized packets
+type CustomDecoder func(context.Context, *QfileSizeReader) ([]byte, error)
 
 // Conf for diskqueue
 type Conf struct {
@@ -11,6 +15,7 @@ type Conf struct {
 	WriteBatch        int
 	WriteMmap         bool
 	MaxMsgSize        int
+	CustomDecoder     CustomDecoder
 	MaxPutting        int
 	EnableWriteBuffer bool
 	MaxFileSize       int64
@@ -19,5 +24,7 @@ type Conf struct {
 	// unit: second
 	CommitInterval  int
 	WriteBufferPool *sync.Pool
+	// below are modified internally for cache
 	writeBufferPool *sync.Pool
+	customDecoder   bool
 }

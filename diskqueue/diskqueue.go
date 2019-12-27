@@ -24,7 +24,7 @@ import (
 type queueInterface interface {
 	queueMetaROInterface
 	Put([]byte) (int64, error)
-	Read(offset int64) ([]byte, error)
+	Read(ctx context.Context, offset int64) ([]byte, error)
 	StreamRead(ctx context.Context, offset int64) (chan []byte, error)
 	Close()
 	GC() (int, error)
@@ -85,16 +85,24 @@ func New(conf Conf) (q *Queue, err error) {
 	if conf.MaxPutting <= 0 {
 		conf.MaxPutting = defaultMaxPutting
 	}
+	if conf.CustomDecoder != nil {
+		conf.customDecoder = true
+	}
 
 	q = &Queue{
-		conf:       conf,
-		writeCh:    make(chan *writeRequest, conf.WriteBatch),
-		writeReqs:  make([]*writeRequest, 0, conf.WriteBatch),
-		writeBuffs: make(net.Buffers, 0, conf.WriteBatch*2),
-		sizeBuffs:  make([]byte, sizeLength*conf.WriteBatch),
-		doneCh:     make(chan struct{}),
-		gcCh:       make(chan *gcRequest),
-		wm:         wm.NewOffset(),
+		conf:      conf,
+		writeCh:   make(chan *writeRequest, conf.WriteBatch),
+		writeReqs: make([]*writeRequest, 0, conf.WriteBatch),
+		doneCh:    make(chan struct{}),
+		gcCh:      make(chan *gcRequest),
+		wm:        wm.NewOffset(),
+	}
+	if conf.customDecoder {
+		q.writeBuffs = make(net.Buffers, 0, conf.WriteBatch)
+		// q.sizeBuffs = nil
+	} else {
+		q.writeBuffs = make(net.Buffers, 0, conf.WriteBatch*2)
+		q.sizeBuffs = make([]byte, sizeLength*conf.WriteBatch)
 	}
 	q.meta = newQueueMeta(&q.conf)
 	err = q.init()
@@ -256,6 +264,22 @@ func (q *Queue) handleWriteAndGC() {
 	startFM := q.meta.FileMeta(q.maxValidIndex())
 	startWrotePosition := startFM.EndOffset
 
+	var (
+		updateWriteBufsFunc func(i int, data []byte)
+		actualSizeLength    int64
+	)
+	if q.conf.customDecoder {
+		updateWriteBufsFunc = func(i int, data []byte) {
+			q.writeBuffs = append(q.writeBuffs, data)
+		}
+	} else {
+		updateWriteBufsFunc = func(i int, data []byte) {
+			q.updateSizeBuf(i, len(data))
+			q.writeBuffs = append(q.writeBuffs, q.getSizeBuf(i))
+			q.writeBuffs = append(q.writeBuffs, wReq.data)
+		}
+		actualSizeLength = sizeLength
+	}
 	for {
 		select {
 		case <-q.doneCh:
@@ -268,10 +292,9 @@ func (q *Queue) handleWriteAndGC() {
 		case wReq = <-q.writeCh:
 			q.writeReqs = q.writeReqs[:0]
 			q.writeBuffs = q.writeBuffs[:0]
+
 			q.writeReqs = append(q.writeReqs, wReq)
-			q.updateSizeBuf(0, len(wReq.data))
-			q.writeBuffs = append(q.writeBuffs, q.getSizeBuf(0))
-			q.writeBuffs = append(q.writeBuffs, wReq.data)
+			updateWriteBufsFunc(0, wReq.data)
 
 			// collect more data
 		BatchLoop:
@@ -279,9 +302,7 @@ func (q *Queue) handleWriteAndGC() {
 				select {
 				case wReq = <-q.writeCh:
 					q.writeReqs = append(q.writeReqs, wReq)
-					q.updateSizeBuf(i+1, len(wReq.data))
-					q.writeBuffs = append(q.writeBuffs, q.getSizeBuf(i+1))
-					q.writeBuffs = append(q.writeBuffs, wReq.data)
+					updateWriteBufsFunc(i+1, wReq.data)
 				default:
 					break BatchLoop
 				}
@@ -323,7 +344,7 @@ func (q *Queue) handleWriteAndGC() {
 			// 全部写入成功
 			for _, req := range q.writeReqs {
 				req.result <- writeResult{offset: startWrotePosition}
-				startWrotePosition += int64(sizeLength) + int64(len(req.data))
+				startWrotePosition += actualSizeLength + int64(len(req.data))
 			}
 			totalN = 0
 
@@ -376,7 +397,7 @@ func (q *Queue) Put(data []byte) (offset int64, err error) {
 		return
 	}
 
-	if len(data) > q.conf.MaxMsgSize {
+	if !q.conf.customDecoder && len(data) > q.conf.MaxMsgSize {
 		err = errMsgTooLarge
 		return
 	}
@@ -417,7 +438,7 @@ func (q *Queue) qfByIdx(idx int) *qfile {
 }
 
 // ReadFrom for read from offset
-func (q *Queue) Read(offset int64) (data []byte, err error) {
+func (q *Queue) Read(ctx context.Context, offset int64) (data []byte, err error) {
 	err = q.checkCloseState()
 	if err != nil {
 		return
@@ -449,7 +470,7 @@ func (q *Queue) Read(offset int64) (data []byte, err error) {
 
 	defer qf.DecrRef()
 
-	data, err = qf.Read(offset)
+	data, err = qf.Read(ctx, offset)
 
 	return
 }
