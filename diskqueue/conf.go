@@ -7,7 +7,7 @@ import (
 )
 
 // CustomDecoder for customized packets
-type CustomDecoder func(context.Context, *QfileSizeReader) ([]byte, error)
+type CustomDecoder func(context.Context, *QfileSizeReader) (bool, []byte, error)
 
 // Conf for diskqueue
 type Conf struct {

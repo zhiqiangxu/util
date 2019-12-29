@@ -25,7 +25,8 @@ type queueInterface interface {
 	queueMetaROInterface
 	Put([]byte) (int64, error)
 	Read(ctx context.Context, offset int64) ([]byte, error)
-	StreamRead(ctx context.Context, offset int64) (chan []byte, error)
+	StreamRead(ctx context.Context, offset int64) (<-chan []byte, error)
+	StreamOffsetRead(offsetCh <-chan int64) (<-chan []byte, error)
 	Close()
 	GC() (int, error)
 	Delete() error
@@ -476,7 +477,7 @@ func (q *Queue) Read(ctx context.Context, offset int64) (data []byte, err error)
 }
 
 // StreamRead for stream read
-func (q *Queue) StreamRead(ctx context.Context, offset int64) (ch chan []byte, err error) {
+func (q *Queue) StreamRead(ctx context.Context, offset int64) (chRet <-chan []byte, err error) {
 	err = q.checkCloseState()
 	if err != nil {
 		return
@@ -508,7 +509,8 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (ch chan []byte, e
 
 	defer qf.DecrRef()
 
-	ch = make(chan []byte)
+	ch := make(chan []byte)
+	chRet = ch
 	util.GoFunc(&q.wg, func() {
 		// close the channel when done
 		defer close(ch)
@@ -519,8 +521,8 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (ch chan []byte, e
 		var streamWG sync.WaitGroup
 		util.GoFunc(&streamWG, func() {
 			for {
-				err := qf.StreamRead(streamCtx, offset, ch)
-				if err == context.Canceled {
+				otherFile, _ := qf.StreamRead(streamCtx, offset, ch)
+				if !otherFile {
 					return
 				}
 				if idx < q.meta.NumFiles()-1 {
@@ -556,6 +558,97 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (ch chan []byte, e
 	return
 }
 
+type streamOffsetResp struct {
+	lastOffset int64
+	otherFile  bool
+	err        error
+}
+
+// StreamOffsetRead for continuous read by offset
+// close offsetCh to signal the end of read
+func (q *Queue) StreamOffsetRead(offsetCh <-chan int64) (chRet <-chan []byte, err error) {
+	err = q.checkCloseState()
+	if err != nil {
+		return
+	}
+
+	ch := make(chan []byte)
+	chRet = ch
+	util.GoFunc(&q.wg, func() {
+		// close the channel when done
+		defer close(ch)
+
+		streamCtx, streamCancel := context.WithCancel(context.Background())
+		defer streamCancel()
+
+		var (
+			streamWG sync.WaitGroup
+			offset   int64
+			ok       bool
+			resp     *streamOffsetResp
+		)
+
+		respCh := make(chan *streamOffsetResp, 1)
+
+		select {
+		case offset, ok = <-offsetCh:
+			if !ok {
+				return
+			}
+			for {
+				idx := q.meta.LocateFile(offset)
+				if idx < 0 {
+					return
+				}
+				q.flock.RLock()
+				qf := q.qfByIdx(idx)
+				if qf == nil {
+					q.flock.RUnlock()
+					return
+				}
+
+				rfc := qf.IncrRef()
+
+				q.flock.RUnlock()
+
+				// already deleted
+				if rfc == 1 {
+					return
+				}
+
+				util.GoFunc(&streamWG, func() {
+					otherFile, lastOffset, err := qf.StreamOffsetRead(streamCtx, offset, offsetCh, ch)
+					respCh <- &streamOffsetResp{otherFile: otherFile, lastOffset: lastOffset, err: err}
+				})
+
+				quit := false
+				select {
+				case <-q.doneCh:
+					streamCancel()
+					streamWG.Wait()
+					quit = true
+				case resp = <-respCh:
+					if resp.otherFile {
+						offset = resp.lastOffset
+					} else {
+						quit = true
+					}
+				}
+
+				qf.DecrRef()
+				if quit {
+					return
+				}
+			}
+
+		case <-q.doneCh:
+			return
+		}
+	})
+
+	return
+}
+
 var (
 	errEmptyDirectory = errors.New("directory empty")
 	errAlreadyClosed  = errors.New("already closed")
@@ -563,6 +656,7 @@ var (
 	errMsgTooLarge    = errors.New("msg too large")
 	errMaxPutting     = errors.New("too much putting")
 	errInvalidOffset  = errors.New("invalid offset")
+	errOffsetChClosed = errors.New("offsetCh closed")
 )
 
 const (

@@ -27,7 +27,8 @@ type qfileInterface interface {
 	DoneWrite() int64
 	Commit() int64
 	Read(ctx context.Context, offset int64) ([]byte, error)
-	StreamRead(ctx context.Context, offset int64, ch chan []byte) error
+	StreamRead(ctx context.Context, offset int64, ch chan<- []byte) (bool, error)
+	StreamOffsetRead(ctx context.Context, offset int64, offsetCh <-chan int64, ch chan<- []byte) (bool, int64, error)
 	Sync() error
 }
 
@@ -39,7 +40,7 @@ type qfile struct {
 	startOffset    int64
 	mappedFile     *mapped.File
 	notLatest      bool
-	readLockedFunc func(ctx context.Context, r *QfileSizeReader) (dataBytes []byte, err error)
+	readLockedFunc func(ctx context.Context, r *QfileSizeReader) (otherFile bool, dataBytes []byte, err error)
 }
 
 const (
@@ -154,17 +155,23 @@ func (qf *qfile) isLatest() bool {
 	return isLatest
 }
 
-func (qf *qfile) readLockedCustom(ctx context.Context, r *QfileSizeReader) (dataBytes []byte, err error) {
+func (qf *qfile) readLockedCustom(ctx context.Context, r *QfileSizeReader) (otherFile bool, dataBytes []byte, err error) {
 
-	dataBytes, err = qf.q.conf.CustomDecoder(ctx, r)
+	otherFile, dataBytes, err = qf.q.conf.CustomDecoder(ctx, r)
+	if err == mapped.ErrReadBeyond && !qf.isLatest() {
+		otherFile = true
+	}
 	return
 }
 
-func (qf *qfile) readLockedDefault(ctx context.Context, r *QfileSizeReader) (dataBytes []byte, err error) {
+func (qf *qfile) readLockedDefault(ctx context.Context, r *QfileSizeReader) (otherFile bool, dataBytes []byte, err error) {
 
 	var sizeBytes [sizeLength]byte
 	err = r.Read(ctx, sizeBytes[:])
 	if err != nil {
+		if err == mapped.ErrReadBeyond && !qf.isLatest() {
+			otherFile = true
+		}
 		return
 	}
 
@@ -200,7 +207,7 @@ func (qf *qfile) Read(ctx context.Context, offset int64) (data []byte, err error
 	defer qf.mappedFile.RUnlock()
 
 	r := qf.getSizeReader(fileOffset)
-	data, err = qf.readLockedFunc(ctx, r)
+	_, data, err = qf.readLockedFunc(ctx, r)
 	qf.putSizeReader(r)
 	return
 }
@@ -225,9 +232,10 @@ func (qf *qfile) putSizeReader(r *QfileSizeReader) {
 }
 
 // when StreamRead returns , err is guaranteed not nil
-func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan []byte) (err error) {
+func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan<- []byte) (otherFile bool, err error) {
 	fileOffset, err := qf.calcFileOffset(offset)
 	if err != nil {
+		logger.Instance().Fatal("calcFileOffset err", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
 		return
 	}
 
@@ -240,7 +248,7 @@ func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan []byte) (
 	var dataBytes []byte
 	for {
 
-		dataBytes, err = qf.readLockedFunc(ctx, r)
+		otherFile, dataBytes, err = qf.readLockedFunc(ctx, r)
 		if err != nil {
 			return
 		}
@@ -248,10 +256,67 @@ func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan []byte) (
 		select {
 		case ch <- dataBytes:
 		case <-ctx.Done():
+			err = ctx.Err()
+			return
 		}
 
 	}
 
+}
+
+func (qf *qfile) StreamOffsetRead(ctx context.Context, offset int64, offsetCh <-chan int64, ch chan<- []byte) (otherFile bool, lastOffset int64, err error) {
+	fileOffset, err := qf.calcFileOffset(offset)
+	if err != nil {
+		logger.Instance().Fatal("calcFileOffset err", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
+		return
+	}
+
+	qf.mappedFile.RLock()
+	defer qf.mappedFile.RUnlock()
+
+	r := qf.getSizeReader(fileOffset)
+	defer func() {
+		lastOffset = r.fileOffset + qf.startOffset
+		qf.putSizeReader(r)
+	}()
+
+	var (
+		dataBytes  []byte
+		nextOffset int64
+		ok         bool
+	)
+	for {
+
+		otherFile, dataBytes, err = qf.readLockedFunc(ctx, r)
+		if err != nil {
+			return
+		}
+
+		select {
+		case ch <- dataBytes:
+		case <-ctx.Done():
+			err = ctx.Err()
+			return
+		}
+
+		select {
+		case nextOffset, ok = <-offsetCh:
+			if !ok {
+				err = errOffsetChClosed
+				return
+			}
+			r.fileOffset = nextOffset - qf.startOffset
+			if r.fileOffset < 0 {
+				err = errInvalidOffset
+				otherFile = true
+				return
+			}
+		case <-ctx.Done():
+			err = ctx.Err()
+			return
+		}
+
+	}
 }
 
 func (qf *qfile) Shrink() error {

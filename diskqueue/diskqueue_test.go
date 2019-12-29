@@ -15,9 +15,12 @@ func TestQueue(t *testing.T) {
 
 	testData := []byte("abcd")
 
+	// test Read
 	n := 1000
+	var offsets []int64
 	for i := 0; i < n; i++ {
 		offset, err := q.Put(testData)
+		offsets = append(offsets, offset)
 		assert.Assert(t, err == nil)
 
 		readData, err := q.Read(nil, offset)
@@ -27,7 +30,22 @@ func TestQueue(t *testing.T) {
 
 	assert.Assert(t, q.NumFiles() == 1 && q.FileMeta(0).MsgCount == uint64(n))
 
-	ch, err := q.StreamRead(context.Background(), 0)
+	// test StreamOffsetRead
+	offsetCh := make(chan int64)
+	ch, err := q.StreamOffsetRead(offsetCh)
+	go func() {
+		for i := 0; i < n; i++ {
+			offsetCh <- offsets[i]
+		}
+	}()
+	for i := 0; i < n; i++ {
+		readData, ok := <-ch
+		assert.Assert(t, bytes.Equal(readData, testData), "%v %v", i, ok)
+	}
+	close(offsetCh)
+
+	// test StreamRead
+	ch, err = q.StreamRead(context.Background(), 0)
 	assert.Assert(t, err == nil)
 	for i := 0; i < n; i++ {
 		readData := <-ch
@@ -45,7 +63,7 @@ func TestQueue(t *testing.T) {
 func TestFixedQueue(t *testing.T) {
 	fixedSizeMsg := []byte("abcd")
 
-	conf := Conf{Directory: "/tmp/dq", WriteMmap: true, CustomDecoder: func(ctx context.Context, r *QfileSizeReader) (data []byte, err error) {
+	conf := Conf{Directory: "/tmp/dq", WriteMmap: true, CustomDecoder: func(ctx context.Context, r *QfileSizeReader) (otherFile bool, data []byte, err error) {
 		data = make([]byte, len(fixedSizeMsg))
 		err = r.Read(ctx, data)
 		return
@@ -57,10 +75,13 @@ func TestFixedQueue(t *testing.T) {
 		assert.Assert(t, err == nil)
 	}()
 
+	// test Read
 	n := 1000
+	var offsets []int64
 	for i := 0; i < n; i++ {
 		offset, err := q.Put(fixedSizeMsg)
 		assert.Assert(t, err == nil)
+		offsets = append(offsets, offset)
 
 		readData, err := q.Read(nil, offset)
 		// fmt.Println(string(readData))
@@ -69,7 +90,22 @@ func TestFixedQueue(t *testing.T) {
 
 	assert.Assert(t, q.NumFiles() == 1 && q.FileMeta(0).MsgCount == uint64(n))
 
-	ch, err := q.StreamRead(context.Background(), 0)
+	// test StreamOffsetRead
+	offsetCh := make(chan int64)
+	ch, err := q.StreamOffsetRead(offsetCh)
+	go func() {
+		for i := 0; i < n; i++ {
+			offsetCh <- offsets[i]
+		}
+	}()
+	for i := 0; i < n; i++ {
+		readData, ok := <-ch
+		assert.Assert(t, bytes.Equal(readData, fixedSizeMsg), "%v %v", i, ok)
+	}
+	close(offsetCh)
+
+	// test StreamRead
+	ch, err = q.StreamRead(context.Background(), 0)
 	assert.Assert(t, err == nil)
 	for i := 0; i < n; i++ {
 		readData := <-ch
