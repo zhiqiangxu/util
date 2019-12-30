@@ -281,9 +281,70 @@ func (q *Queue) handleWriteAndGC() {
 		}
 		actualSizeLength = sizeLength
 	}
+
+	handleWriteFunc := func() {
+		// enough data, ready to go!
+		qf = q.files[len(q.files)-1]
+
+		writeBuffs := q.writeBuffs
+
+		util.TryUntilSuccess(func() bool {
+			wroteN, err = qf.writeBuffers(&q.writeBuffs)
+			totalN += wroteN
+			if err == mapped.ErrWriteBeyond {
+				// 写超了，需要新开文件
+				err = q.createQfile()
+				if err != nil {
+					logger.Instance().Error("handleWriteAndGC createQfile", zap.Error(err))
+				} else {
+					qf = q.files[len(q.files)-1]
+					wroteN, err = qf.writeBuffers(&q.writeBuffs)
+					totalN += wroteN
+				}
+			}
+			if err != nil {
+				logger.Instance().Error("handleWriteAndGC WriteTo", zap.Error(err))
+				return false
+			}
+			return true
+		}, time.Second)
+
+		q.meta.UpdateFileStat(q.maxValidIndex(), len(q.writeReqs), startWrotePosition+totalN, NowNano())
+		if !q.conf.EnableWriteBuffer {
+			q.wm.Done(startWrotePosition + totalN)
+		}
+
+		q.writeBuffs = writeBuffs
+
+		// 全部写入成功
+		for _, req := range q.writeReqs {
+			req.result <- writeResult{offset: startWrotePosition}
+			startWrotePosition += actualSizeLength + int64(len(req.data))
+		}
+		totalN = 0
+	}
+
 	for {
 		select {
 		case <-q.doneCh:
+			// drain writeCh before quit
+		DrainStart:
+			q.writeReqs = q.writeReqs[:0]
+			q.writeBuffs = q.writeBuffs[:0]
+		DrainLoop:
+			for i := 0; i < q.conf.WriteBatch; i++ {
+				select {
+				case wReq = <-q.writeCh:
+					q.writeReqs = append(q.writeReqs, wReq)
+					updateWriteBufsFunc(i, wReq.data)
+				case <-time.NewTimer(time.Second).C: // long enough to wait for inflight wreq
+					break DrainLoop
+				}
+			}
+
+			if len(q.writeReqs) == q.conf.WriteBatch {
+				goto DrainStart
+			}
 			return
 		case gcReq = <-q.gcCh:
 
@@ -309,46 +370,7 @@ func (q *Queue) handleWriteAndGC() {
 				}
 			}
 
-			// enough data, ready to go!
-			qf = q.files[len(q.files)-1]
-
-			writeBuffs := q.writeBuffs
-
-			util.TryUntilSuccess(func() bool {
-				wroteN, err = qf.writeBuffers(&q.writeBuffs)
-				totalN += wroteN
-				if err == mapped.ErrWriteBeyond {
-					// 写超了，需要新开文件
-					err = q.createQfile()
-					if err != nil {
-						logger.Instance().Error("handleWriteAndGC createQfile", zap.Error(err))
-					} else {
-						qf = q.files[len(q.files)-1]
-						wroteN, err = qf.writeBuffers(&q.writeBuffs)
-						totalN += wroteN
-					}
-				}
-				if err != nil {
-					logger.Instance().Error("handleWriteAndGC WriteTo", zap.Error(err))
-					return false
-				}
-				return true
-			}, time.Second)
-
-			q.meta.UpdateFileStat(q.maxValidIndex(), len(q.writeReqs), startWrotePosition+totalN, NowNano())
-			if !q.conf.EnableWriteBuffer {
-				q.wm.Done(startWrotePosition + totalN)
-			}
-
-			q.writeBuffs = writeBuffs
-
-			// 全部写入成功
-			for _, req := range q.writeReqs {
-				req.result <- writeResult{offset: startWrotePosition}
-				startWrotePosition += actualSizeLength + int64(len(req.data))
-			}
-			totalN = 0
-
+			handleWriteFunc()
 		}
 	}
 }
@@ -393,13 +415,13 @@ func (q *Queue) handleCommit() {
 // Put data to queue
 func (q *Queue) Put(data []byte) (offset int64, err error) {
 
-	err = q.checkCloseState()
-	if err != nil {
+	if !q.conf.customDecoder && len(data) > q.conf.MaxMsgSize {
+		err = errMsgTooLarge
 		return
 	}
 
-	if !q.conf.customDecoder && len(data) > q.conf.MaxMsgSize {
-		err = errMsgTooLarge
+	err = q.checkCloseState()
+	if err != nil {
 		return
 	}
 
@@ -685,6 +707,9 @@ func (q *Queue) Close() {
 	q.once.Do(func() {
 		atomic.StoreUint32(&q.closeState, closing)
 
+		close(q.doneCh)
+		q.wg.Wait()
+
 		util.TryUntilSuccess(func() bool {
 			// try until success
 			err := q.meta.Close()
@@ -698,8 +723,6 @@ func (q *Queue) Close() {
 
 		}, time.Second)
 
-		close(q.doneCh)
-		q.wg.Wait()
 		atomic.StoreUint32(&q.closeState, closed)
 	})
 
