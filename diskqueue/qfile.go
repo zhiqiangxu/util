@@ -30,6 +30,7 @@ type qfileInterface interface {
 	StreamRead(ctx context.Context, offset int64, ch chan<- []byte) (bool, error)
 	StreamOffsetRead(ctx context.Context, offset int64, offsetCh <-chan int64, ch chan<- []byte) (bool, int64, error)
 	Sync() error
+	Close() error
 }
 
 // qfile has no write-write races, but has read-write races
@@ -111,9 +112,9 @@ func (qf *qfile) DecrRef() (newRef int32) {
 		return
 	}
 
-	err := qf.close()
+	err := qf.Close()
 	if err != nil {
-		logger.Instance().Error("qf.close", zap.Error(err))
+		logger.Instance().Error("qf.Close", zap.Error(err))
 	}
 
 	err = qf.remove()
@@ -327,7 +328,7 @@ func (qf *qfile) Sync() error {
 	return qf.mappedFile.Sync()
 }
 
-func (qf *qfile) close() error {
+func (qf *qfile) Close() error {
 	return qf.mappedFile.Close()
 }
 

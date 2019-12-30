@@ -723,6 +723,12 @@ func (q *Queue) Close() {
 
 		}, time.Second)
 
+		for _, file := range q.files {
+			err := file.Close()
+			if err != nil {
+				logger.Instance().Error("file.Close", zap.Error(err))
+			}
+		}
 		atomic.StoreUint32(&q.closeState, closed)
 	})
 
