@@ -58,7 +58,7 @@ type Queue struct {
 const (
 	defaultWriteBatch      = 100
 	defaultMaxMsgSize      = 512 * 1024 * 1024
-	defaultMaxPutting      = 10000
+	defaultMaxPutting      = 200000
 	defaultPersistDuration = 3 * 24 * time.Hour
 	sizeLength             = 4
 )
