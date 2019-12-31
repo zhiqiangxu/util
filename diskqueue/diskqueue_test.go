@@ -26,6 +26,7 @@ func TestQueue(t *testing.T) {
 		readData, err := q.Read(nil, offset)
 		// fmt.Println(string(readData))
 		assert.Assert(t, err == nil && bytes.Equal(readData, testData), "%v:%v", err, i)
+		assert.Assert(t, q.FileMeta(0).MsgCount == uint64(i+1))
 	}
 
 	assert.Assert(t, q.NumFiles() == 1 && q.FileMeta(0).MsgCount == uint64(n))
@@ -86,6 +87,7 @@ func TestFixedQueue(t *testing.T) {
 		readData, err := q.Read(nil, offset)
 		// fmt.Println(string(readData))
 		assert.Assert(t, err == nil && bytes.Equal(readData, fixedSizeMsg), "%v:%v:%v", err, i, offset)
+		assert.Assert(t, q.FileMeta(0).MsgCount == uint64(i+1))
 	}
 
 	assert.Assert(t, q.NumFiles() == 1 && q.FileMeta(0).MsgCount == uint64(n))
