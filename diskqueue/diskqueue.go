@@ -39,14 +39,13 @@ type Queue struct {
 	putting    int32
 	gcFlag     uint32
 	closeState uint32
-	wg         sync.WaitGroup
+	closer     *util.Closer
 	meta       *queueMeta
 	conf       Conf
 	writeCh    chan *writeRequest
 	writeReqs  []*writeRequest
 	writeBuffs net.Buffers
 	sizeBuffs  []byte
-	doneCh     chan struct{}
 	gcCh       chan *gcRequest
 	// guards files,minValidIndex
 	flock         sync.RWMutex
@@ -91,10 +90,10 @@ func New(conf Conf) (q *Queue, err error) {
 	}
 
 	q = &Queue{
+		closer:    util.NewCloser(),
 		conf:      conf,
 		writeCh:   make(chan *writeRequest, conf.WriteBatch),
 		writeReqs: make([]*writeRequest, 0, conf.WriteBatch),
-		doneCh:    make(chan struct{}),
 		gcCh:      make(chan *gcRequest),
 		wm:        wm.NewOffset(),
 	}
@@ -193,8 +192,8 @@ func (q *Queue) init() (err error) {
 		}
 	}
 
-	util.GoFunc(&q.wg, q.handleWriteAndGC)
-	util.GoFunc(&q.wg, q.handleCommit)
+	util.GoFunc(q.closer.WaitGroupRef(), q.handleWriteAndGC)
+	util.GoFunc(q.closer.WaitGroupRef(), q.handleCommit)
 
 	return nil
 }
@@ -326,7 +325,7 @@ func (q *Queue) handleWriteAndGC() {
 
 	for {
 		select {
-		case <-q.doneCh:
+		case <-q.closer.HasBeenClosed():
 			// drain writeCh before quit
 		DrainStart:
 			q.writeReqs = q.writeReqs[:0]
@@ -337,13 +336,36 @@ func (q *Queue) handleWriteAndGC() {
 				case wReq = <-q.writeCh:
 					q.writeReqs = append(q.writeReqs, wReq)
 					updateWriteBufsFunc(i, wReq.data)
-				case <-time.NewTimer(time.Second).C: // long enough to wait for inflight wreq
+				default:
 					break DrainLoop
 				}
 			}
 
-			if len(q.writeReqs) == q.conf.WriteBatch {
-				goto DrainStart
+			if len(q.writeReqs) > 0 {
+				handleWriteFunc()
+
+				if len(q.writeReqs) == q.conf.WriteBatch {
+					goto DrainStart
+				}
+			}
+
+			close(q.writeCh)
+
+			var ok bool
+		DrainLoopFinal:
+			for i := 0; i < q.conf.WriteBatch; i++ {
+				select {
+				case wReq, ok = <-q.writeCh:
+					if !ok {
+						break DrainLoopFinal
+					}
+					q.writeReqs = append(q.writeReqs, wReq)
+					updateWriteBufsFunc(i, wReq.data)
+				}
+			}
+
+			if len(q.writeReqs) > 0 {
+				handleWriteFunc()
 			}
 			return
 		case gcReq = <-q.gcCh:
@@ -406,7 +428,7 @@ func (q *Queue) handleCommit() {
 			q.flock.RUnlock()
 			commitOffset := qf.Commit()
 			q.wm.Done(commitOffset)
-		case <-q.doneCh:
+		case <-q.closer.HasBeenClosed():
 			return
 		}
 	}
@@ -445,7 +467,7 @@ func (q *Queue) Put(data []byte) (offset int64, err error) {
 		wreqPool.Put(wreq)
 		offset = result.offset
 		return
-	case <-q.doneCh:
+	case <-q.closer.HasBeenClosed():
 		err = errAlreadyClosed
 		return
 	}
@@ -533,7 +555,7 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (chRet <-chan []by
 
 	ch := make(chan []byte)
 	chRet = ch
-	util.GoFunc(&q.wg, func() {
+	util.GoFunc(q.closer.WaitGroupRef(), func() {
 		// close the channel when done
 		defer close(ch)
 
@@ -569,7 +591,7 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (chRet <-chan []by
 		})
 
 		select {
-		case <-q.doneCh:
+		case <-q.closer.HasBeenClosed():
 			streamCancel()
 		case <-ctx.Done():
 		}
@@ -596,7 +618,7 @@ func (q *Queue) StreamOffsetRead(offsetCh <-chan int64) (chRet <-chan []byte, er
 
 	ch := make(chan []byte)
 	chRet = ch
-	util.GoFunc(&q.wg, func() {
+	util.GoFunc(q.closer.WaitGroupRef(), func() {
 		// close the channel when done
 		defer close(ch)
 
@@ -645,7 +667,7 @@ func (q *Queue) StreamOffsetRead(offsetCh <-chan int64) (chRet <-chan []byte, er
 
 				quit := false
 				select {
-				case <-q.doneCh:
+				case <-q.closer.HasBeenClosed():
 					streamCancel()
 					streamWG.Wait()
 					quit = true
@@ -663,7 +685,7 @@ func (q *Queue) StreamOffsetRead(offsetCh <-chan int64) (chRet <-chan []byte, er
 				}
 			}
 
-		case <-q.doneCh:
+		case <-q.closer.HasBeenClosed():
 			return
 		}
 	})
@@ -707,8 +729,7 @@ func (q *Queue) Close() {
 	q.once.Do(func() {
 		atomic.StoreUint32(&q.closeState, closing)
 
-		close(q.doneCh)
-		q.wg.Wait()
+		q.closer.SignalAndWait()
 
 		util.TryUntilSuccess(func() bool {
 			// try until success
@@ -759,14 +780,14 @@ func (q *Queue) GC() (n int, err error) {
 	select {
 	case q.gcCh <- gcReq:
 		select {
-		case <-q.doneCh:
+		case <-q.closer.HasBeenClosed():
 			err = errAlreadyClosed
 			return
 		case gcResult := <-gcReq.result:
 			n, err = gcResult.n, gcResult.err
 			return
 		}
-	case <-q.doneCh:
+	case <-q.closer.HasBeenClosed():
 		err = errAlreadyClosed
 		return
 	}

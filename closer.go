@@ -16,6 +16,11 @@ func NewCloser() *Closer {
 	return ret
 }
 
+// WaitGroupRef returns the reference of WaitGroup
+func (lc *Closer) WaitGroupRef() *sync.WaitGroup {
+	return &lc.waiting
+}
+
 // AddRunning for add delta to WaitGroup
 func (lc *Closer) AddRunning(delta int) {
 	lc.waiting.Add(delta)
