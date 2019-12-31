@@ -351,6 +351,9 @@ func (q *Queue) handleWriteAndGC() {
 
 			close(q.writeCh)
 
+			q.writeReqs = q.writeReqs[:0]
+			q.writeBuffs = q.writeBuffs[:0]
+
 			var ok bool
 		DrainLoopFinal:
 			for i := 0; i < q.conf.WriteBatch; i++ {
