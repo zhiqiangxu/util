@@ -40,7 +40,7 @@ type Queue struct {
 	putting    int32
 	gcFlag     uint32
 	closeState uint32
-	closer     *closer.Signal
+	closer     *closer.Naive
 	meta       *queueMeta
 	conf       Conf
 	writeCh    chan *writeRequest
@@ -91,7 +91,7 @@ func New(conf Conf) (q *Queue, err error) {
 	}
 
 	q = &Queue{
-		closer:    closer.NewSignal(),
+		closer:    closer.NewNaive(),
 		conf:      conf,
 		writeCh:   make(chan *writeRequest, conf.WriteBatch),
 		writeReqs: make([]*writeRequest, 0, conf.WriteBatch),

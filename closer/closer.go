@@ -8,6 +8,6 @@ type Closer interface {
 	Done() // alias for Add(-1)
 }
 
-var _ Closer = (*State)(nil)
+var _ Closer = (*Strict)(nil)
 
-var _ Closer = (*Signal)(nil)
+var _ Closer = (*Naive)(nil)
