@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 
 	"github.com/zhiqiangxu/util"
+	"github.com/zhiqiangxu/util/closer"
 	"github.com/zhiqiangxu/util/logger"
 	"github.com/zhiqiangxu/util/mapped"
 	"github.com/zhiqiangxu/util/wm"
@@ -39,7 +40,7 @@ type Queue struct {
 	putting    int32
 	gcFlag     uint32
 	closeState uint32
-	closer     *util.Closer
+	closer     *closer.Signal
 	meta       *queueMeta
 	conf       Conf
 	writeCh    chan *writeRequest
@@ -90,7 +91,7 @@ func New(conf Conf) (q *Queue, err error) {
 	}
 
 	q = &Queue{
-		closer:    util.NewCloser(),
+		closer:    closer.NewSignal(),
 		conf:      conf,
 		writeCh:   make(chan *writeRequest, conf.WriteBatch),
 		writeReqs: make([]*writeRequest, 0, conf.WriteBatch),
