@@ -55,6 +55,9 @@ func (s *State) SignalAndWait() {
 	}
 
 	atomic.StoreUint32(&s.closed, 1)
+	// s.waiting.WaitRelease(func(){
+	// 	s.mu.Unlock()
+	// })
 	s.waiting.Wait()
 	s.mu.Unlock()
 }
