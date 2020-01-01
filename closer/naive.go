@@ -26,8 +26,8 @@ func (n *Naive) Add(delta int) {
 	n.waiting.Add(delta)
 }
 
-// CloseSignal gets signaled when Wait() is called.
-func (n *Naive) CloseSignal() <-chan struct{} {
+// ClosedSignal gets signaled when Wait() is called.
+func (n *Naive) ClosedSignal() <-chan struct{} {
 	return n.done
 }
 

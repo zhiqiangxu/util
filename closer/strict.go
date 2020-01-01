@@ -48,8 +48,8 @@ func (s *Strict) HasBeenClosed() bool {
 	return atomic.LoadUint32(&s.closed) != 0
 }
 
-// CloseSignal gets signaled when Wait() is called.
-func (s *Strict) CloseSignal() <-chan struct{} {
+// ClosedSignal gets signaled when Wait() is called.
+func (s *Strict) ClosedSignal() <-chan struct{} {
 	return s.done
 }
 
