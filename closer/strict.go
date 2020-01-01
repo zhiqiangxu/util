@@ -5,8 +5,9 @@ import (
 	"sync/atomic"
 )
 
-// Strict closer is a sync.WaitGroup with state
-// It guarantees no Add with positive delta will ever succeed after Wait
+// Strict closer is a sync.WaitGroup with state.
+// It guarantees no Add with positive delta will ever succeed after Wait.
+// Wait can only be called once, but Add and Wait can be called concurrently.
 // The happens before relationship between Add and Wait is taken care of automatically.
 type Strict struct {
 	mu      sync.RWMutex
