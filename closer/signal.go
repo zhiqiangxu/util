@@ -25,8 +25,8 @@ func (s *Signal) Add(delta int) {
 	s.waiting.Add(delta)
 }
 
-// HasBeenClosed gets signaled when Wait() is called.
-func (s *Signal) HasBeenClosed() <-chan struct{} {
+// CloseSignal gets signaled when Wait() is called.
+func (s *Signal) CloseSignal() <-chan struct{} {
 	return s.done
 }
 

@@ -326,7 +326,7 @@ func (q *Queue) handleWriteAndGC() {
 
 	for {
 		select {
-		case <-q.closer.HasBeenClosed():
+		case <-q.closer.CloseSignal():
 			// drain writeCh before quit
 		DrainStart:
 			q.writeReqs = q.writeReqs[:0]
@@ -432,7 +432,7 @@ func (q *Queue) handleCommit() {
 			q.flock.RUnlock()
 			commitOffset := qf.Commit()
 			q.wm.Done(commitOffset)
-		case <-q.closer.HasBeenClosed():
+		case <-q.closer.CloseSignal():
 			return
 		}
 	}
@@ -471,7 +471,7 @@ func (q *Queue) Put(data []byte) (offset int64, err error) {
 		wreqPool.Put(wreq)
 		offset = result.offset
 		return
-	case <-q.closer.HasBeenClosed():
+	case <-q.closer.CloseSignal():
 		err = errAlreadyClosed
 		return
 	}
@@ -595,7 +595,7 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (chRet <-chan []by
 		})
 
 		select {
-		case <-q.closer.HasBeenClosed():
+		case <-q.closer.CloseSignal():
 			streamCancel()
 		case <-ctx.Done():
 		}
@@ -671,7 +671,7 @@ func (q *Queue) StreamOffsetRead(offsetCh <-chan int64) (chRet <-chan []byte, er
 
 				quit := false
 				select {
-				case <-q.closer.HasBeenClosed():
+				case <-q.closer.CloseSignal():
 					streamCancel()
 					streamWG.Wait()
 					quit = true
@@ -689,7 +689,7 @@ func (q *Queue) StreamOffsetRead(offsetCh <-chan int64) (chRet <-chan []byte, er
 				}
 			}
 
-		case <-q.closer.HasBeenClosed():
+		case <-q.closer.CloseSignal():
 			return
 		}
 	})
@@ -784,14 +784,14 @@ func (q *Queue) GC() (n int, err error) {
 	select {
 	case q.gcCh <- gcReq:
 		select {
-		case <-q.closer.HasBeenClosed():
+		case <-q.closer.CloseSignal():
 			err = errAlreadyClosed
 			return
 		case gcResult := <-gcReq.result:
 			n, err = gcResult.n, gcResult.err
 			return
 		}
-	case <-q.closer.HasBeenClosed():
+	case <-q.closer.CloseSignal():
 		err = errAlreadyClosed
 		return
 	}

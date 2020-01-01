@@ -11,6 +11,12 @@ type State struct {
 	mu      sync.RWMutex
 	waiting sync.WaitGroup
 	closed  uint32
+	done    chan struct{}
+}
+
+// NewState is ctor for State
+func NewState() *State {
+	return &State{done: make(chan struct{})}
 }
 
 // Add delta to wait group
@@ -40,6 +46,11 @@ func (s *State) HasBeenClosed() bool {
 	return atomic.LoadUint32(&s.closed) != 0
 }
 
+// CloseSignal gets signaled when Wait() is called.
+func (s *State) CloseSignal() <-chan struct{} {
+	return s.done
+}
+
 // Done decrements the WaitGroup counter by one.
 func (s *State) Done() {
 	s.waiting.Add(-1)
@@ -48,11 +59,9 @@ func (s *State) Done() {
 // SignalAndWait updates closed and blocks until the WaitGroup counter is zero.
 // Call it more than once will panic
 func (s *State) SignalAndWait() {
+	close(s.done)
+
 	s.mu.Lock()
-	if s.closed != 0 {
-		s.mu.Unlock()
-		panic("Wait more than once")
-	}
 
 	atomic.StoreUint32(&s.closed, 1)
 	// s.waiting.WaitRelease(func(){
