@@ -46,7 +46,12 @@ func (s *Strict) Add(delta int) {
 	}
 
 	if counter == 0 {
-		s.cond.Signal()
+		s.mu.RLock()
+		if s.HasBeenClosed() {
+			s.cond.Signal()
+		}
+		s.mu.RUnlock()
+
 	}
 }
 
@@ -62,9 +67,7 @@ func (s *Strict) ClosedSignal() <-chan struct{} {
 
 // Done decrements the WaitGroup counter by one.
 func (s *Strict) Done() {
-	if atomic.AddInt32(&s.counter, -1) == 0 {
-		s.cond.Signal()
-	}
+	s.Add(-1)
 }
 
 // SignalAndWait updates closed and blocks until the WaitGroup counter is zero.
