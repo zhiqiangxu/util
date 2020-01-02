@@ -11,14 +11,17 @@ import (
 // The happens before relationship between Add and Wait is taken care of automatically.
 type Strict struct {
 	mu      sync.RWMutex
-	waiting sync.WaitGroup
+	cond    *sync.Cond
 	closed  uint32
+	counter int32
 	done    chan struct{}
 }
 
 // NewStrict is ctor for Strict
 func NewStrict() *Strict {
-	return &Strict{done: make(chan struct{})}
+	s := &Strict{done: make(chan struct{})}
+	s.cond = sync.NewCond(&s.mu)
+	return s
 }
 
 // Add delta to wait group
@@ -36,10 +39,14 @@ func (s *Strict) Add(delta int) {
 		}
 	}
 
-	s.waiting.Add(delta)
+	counter := atomic.AddInt32(&s.counter, int32(delta))
 
 	if delta > 0 {
 		s.mu.RUnlock()
+	}
+
+	if counter == 0 {
+		s.cond.Signal()
 	}
 }
 
@@ -55,7 +62,9 @@ func (s *Strict) ClosedSignal() <-chan struct{} {
 
 // Done decrements the WaitGroup counter by one.
 func (s *Strict) Done() {
-	s.waiting.Add(-1)
+	if atomic.AddInt32(&s.counter, -1) == 0 {
+		s.cond.Signal()
+	}
 }
 
 // SignalAndWait updates closed and blocks until the WaitGroup counter is zero.
@@ -66,9 +75,10 @@ func (s *Strict) SignalAndWait() {
 	s.mu.Lock()
 
 	atomic.StoreUint32(&s.closed, 1)
-	// s.waiting.WaitRelease(func(){
-	// 	s.mu.Unlock()
-	// })
-	s.waiting.Wait()
+
+	for atomic.LoadInt32(&s.counter) != 0 {
+		s.cond.Wait()
+	}
+
 	s.mu.Unlock()
 }
