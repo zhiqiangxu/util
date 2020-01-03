@@ -41,7 +41,7 @@ func TestQueue(t *testing.T) {
 	}()
 	for i := 0; i < n; i++ {
 		streamData, ok := <-ch
-		assert.Assert(t, bytes.Equal(streamData.Bytes, testData), "%v %v", i, ok)
+		assert.Assert(t, bytes.Equal(streamData.Bytes, testData) && streamData.Offset == offsets[i], "i:%v ok:%v streamData.Offset:%v offsets[i]:%v", i, ok, streamData.Offset, offsets[i])
 	}
 	close(offsetCh)
 
@@ -102,7 +102,7 @@ func TestFixedQueue(t *testing.T) {
 	}()
 	for i := 0; i < n; i++ {
 		streamData, ok := <-ch
-		assert.Assert(t, bytes.Equal(streamData.Bytes, fixedSizeMsg), "%v %v", i, ok)
+		assert.Assert(t, bytes.Equal(streamData.Bytes, fixedSizeMsg) && streamData.Offset == offsets[i], "%v %v", i, ok)
 	}
 	close(offsetCh)
 

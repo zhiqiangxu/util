@@ -41,7 +41,7 @@ type qfile struct {
 	startOffset    int64
 	mappedFile     *mapped.File
 	notLatest      bool
-	readLockedFunc func(ctx context.Context, r *QfileSizeReader) (otherFile bool, dataBytes []byte, err error)
+	readLockedFunc func(ctx context.Context, r *QfileSizeReader) (otherFile bool, startOffset int64, dataBytes []byte, err error)
 }
 
 const (
@@ -156,8 +156,9 @@ func (qf *qfile) isLatest() bool {
 	return isLatest
 }
 
-func (qf *qfile) readLockedCustom(ctx context.Context, r *QfileSizeReader) (otherFile bool, dataBytes []byte, err error) {
+func (qf *qfile) readLockedCustom(ctx context.Context, r *QfileSizeReader) (otherFile bool, startOffset int64, dataBytes []byte, err error) {
 
+	startOffset = r.NextOffset()
 	otherFile, dataBytes, err = qf.q.conf.CustomDecoder(ctx, r)
 	if err == mapped.ErrReadBeyond && !qf.isLatest() {
 		otherFile = true
@@ -165,8 +166,9 @@ func (qf *qfile) readLockedCustom(ctx context.Context, r *QfileSizeReader) (othe
 	return
 }
 
-func (qf *qfile) readLockedDefault(ctx context.Context, r *QfileSizeReader) (otherFile bool, dataBytes []byte, err error) {
+func (qf *qfile) readLockedDefault(ctx context.Context, r *QfileSizeReader) (otherFile bool, startOffset int64, dataBytes []byte, err error) {
 
+	startOffset = r.NextOffset()
 	var sizeBytes [sizeLength]byte
 	err = r.Read(ctx, sizeBytes[:])
 	if err != nil {
@@ -208,7 +210,7 @@ func (qf *qfile) Read(ctx context.Context, offset int64) (data []byte, err error
 	defer qf.mappedFile.RUnlock()
 
 	r := qf.getSizeReader(fileOffset)
-	_, data, err = qf.readLockedFunc(ctx, r)
+	_, _, data, err = qf.readLockedFunc(ctx, r)
 	qf.putSizeReader(r)
 	return
 }
@@ -246,16 +248,20 @@ func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan<- StreamB
 	r := qf.getSizeReader(fileOffset)
 	defer qf.putSizeReader(r)
 
-	var dataBytes []byte
+	var (
+		dataBytes   []byte
+		startOffset int64
+	)
+
 	for {
 
-		otherFile, dataBytes, err = qf.readLockedFunc(ctx, r)
+		otherFile, startOffset, dataBytes, err = qf.readLockedFunc(ctx, r)
 		if err != nil {
 			return
 		}
 
 		select {
-		case ch <- StreamBytes{Bytes: dataBytes, Offset: r.NextOffset() - int64(len(dataBytes))}:
+		case ch <- StreamBytes{Bytes: dataBytes, Offset: startOffset}:
 		case <-ctx.Done():
 			err = ctx.Err()
 			return
@@ -282,19 +288,21 @@ func (qf *qfile) StreamOffsetRead(ctx context.Context, offset int64, offsetCh <-
 	}()
 
 	var (
-		dataBytes  []byte
-		nextOffset int64
-		ok         bool
+		dataBytes   []byte
+		nextOffset  int64
+		ok          bool
+		startOffset int64
 	)
+
 	for {
 
-		otherFile, dataBytes, err = qf.readLockedFunc(ctx, r)
+		otherFile, startOffset, dataBytes, err = qf.readLockedFunc(ctx, r)
 		if err != nil {
 			return
 		}
 
 		select {
-		case ch <- StreamBytes{Bytes: dataBytes, Offset: r.NextOffset() - int64(len(dataBytes))}:
+		case ch <- StreamBytes{Bytes: dataBytes, Offset: startOffset}:
 		case <-ctx.Done():
 			err = ctx.Err()
 			return
