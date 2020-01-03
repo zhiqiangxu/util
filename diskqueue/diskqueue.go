@@ -22,12 +22,18 @@ import (
 	"go.uber.org/zap"
 )
 
+// StreamBytes is bytes with offset info
+type StreamBytes struct {
+	Bytes  []byte
+	Offset int64
+}
+
 type queueInterface interface {
 	queueMetaROInterface
 	Put([]byte) (int64, error)
 	Read(ctx context.Context, offset int64) ([]byte, error)
-	StreamRead(ctx context.Context, offset int64) (<-chan []byte, error)
-	StreamOffsetRead(offsetCh <-chan int64) (<-chan []byte, error)
+	StreamRead(ctx context.Context, offset int64) (<-chan StreamBytes, error)
+	StreamOffsetRead(offsetCh <-chan int64) (<-chan StreamBytes, error)
 	Close()
 	GC() (int, error)
 	Delete() error
@@ -525,7 +531,7 @@ func (q *Queue) Read(ctx context.Context, offset int64) (data []byte, err error)
 }
 
 // StreamRead for stream read
-func (q *Queue) StreamRead(ctx context.Context, offset int64) (chRet <-chan []byte, err error) {
+func (q *Queue) StreamRead(ctx context.Context, offset int64) (chRet <-chan StreamBytes, err error) {
 	err = q.checkCloseState()
 	if err != nil {
 		return
@@ -557,7 +563,7 @@ func (q *Queue) StreamRead(ctx context.Context, offset int64) (chRet <-chan []by
 
 	defer qf.DecrRef()
 
-	ch := make(chan []byte)
+	ch := make(chan StreamBytes)
 	chRet = ch
 	util.GoFunc(q.closer.WaitGroupRef(), func() {
 		// close the channel when done
@@ -614,13 +620,13 @@ type streamOffsetResp struct {
 
 // StreamOffsetRead for continuous read by offset
 // close offsetCh to signal the end of read
-func (q *Queue) StreamOffsetRead(offsetCh <-chan int64) (chRet <-chan []byte, err error) {
+func (q *Queue) StreamOffsetRead(offsetCh <-chan int64) (chRet <-chan StreamBytes, err error) {
 	err = q.checkCloseState()
 	if err != nil {
 		return
 	}
 
-	ch := make(chan []byte)
+	ch := make(chan StreamBytes)
 	chRet = ch
 	util.GoFunc(q.closer.WaitGroupRef(), func() {
 		// close the channel when done

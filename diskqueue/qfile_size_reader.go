@@ -4,6 +4,7 @@ import "context"
 
 type qfileSizeReaderInterface interface {
 	Read(ctx context.Context, sizeBytes []byte) (err error)
+	NextOffset() int64
 }
 
 var _ qfileSizeReaderInterface = (*QfileSizeReader)(nil)
@@ -40,4 +41,9 @@ func (r *QfileSizeReader) Read(ctx context.Context, sizeBytes []byte) (err error
 
 	r.fileOffset += int64(len(sizeBytes))
 	return
+}
+
+// NextOffset returns the next offset to read from
+func (r *QfileSizeReader) NextOffset() int64 {
+	return r.qf.startOffset + r.fileOffset
 }

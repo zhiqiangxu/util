@@ -40,8 +40,8 @@ func TestQueue(t *testing.T) {
 		}
 	}()
 	for i := 0; i < n; i++ {
-		readData, ok := <-ch
-		assert.Assert(t, bytes.Equal(readData, testData), "%v %v", i, ok)
+		streamData, ok := <-ch
+		assert.Assert(t, bytes.Equal(streamData.Bytes, testData), "%v %v", i, ok)
 	}
 	close(offsetCh)
 
@@ -49,8 +49,8 @@ func TestQueue(t *testing.T) {
 	ch, err = q.StreamRead(context.Background(), 0)
 	assert.Assert(t, err == nil)
 	for i := 0; i < n; i++ {
-		readData := <-ch
-		assert.Assert(t, bytes.Equal(readData, testData))
+		streamData := <-ch
+		assert.Assert(t, bytes.Equal(streamData.Bytes, testData))
 	}
 
 	n, err = q.GC()
@@ -101,8 +101,8 @@ func TestFixedQueue(t *testing.T) {
 		}
 	}()
 	for i := 0; i < n; i++ {
-		readData, ok := <-ch
-		assert.Assert(t, bytes.Equal(readData, fixedSizeMsg), "%v %v", i, ok)
+		streamData, ok := <-ch
+		assert.Assert(t, bytes.Equal(streamData.Bytes, fixedSizeMsg), "%v %v", i, ok)
 	}
 	close(offsetCh)
 
@@ -110,8 +110,8 @@ func TestFixedQueue(t *testing.T) {
 	ch, err = q.StreamRead(context.Background(), 0)
 	assert.Assert(t, err == nil)
 	for i := 0; i < n; i++ {
-		readData := <-ch
-		assert.Assert(t, bytes.Equal(readData, fixedSizeMsg))
+		streamData := <-ch
+		assert.Assert(t, bytes.Equal(streamData.Bytes, fixedSizeMsg))
 	}
 
 	n, err = q.GC()

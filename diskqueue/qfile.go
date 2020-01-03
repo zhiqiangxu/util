@@ -27,8 +27,8 @@ type qfileInterface interface {
 	DoneWrite() int64
 	Commit() int64
 	Read(ctx context.Context, offset int64) ([]byte, error)
-	StreamRead(ctx context.Context, offset int64, ch chan<- []byte) (bool, error)
-	StreamOffsetRead(ctx context.Context, offset int64, offsetCh <-chan int64, ch chan<- []byte) (bool, int64, error)
+	StreamRead(ctx context.Context, offset int64, ch chan<- StreamBytes) (bool, error)
+	StreamOffsetRead(ctx context.Context, offset int64, offsetCh <-chan int64, ch chan<- StreamBytes) (bool, int64, error)
 	Sync() error
 	Close() error
 }
@@ -233,7 +233,7 @@ func (qf *qfile) putSizeReader(r *QfileSizeReader) {
 }
 
 // when StreamRead returns , err is guaranteed not nil
-func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan<- []byte) (otherFile bool, err error) {
+func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan<- StreamBytes) (otherFile bool, err error) {
 	fileOffset, err := qf.calcFileOffset(offset)
 	if err != nil {
 		logger.Instance().Fatal("calcFileOffset err", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
@@ -255,7 +255,7 @@ func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan<- []byte)
 		}
 
 		select {
-		case ch <- dataBytes:
+		case ch <- StreamBytes{Bytes: dataBytes, Offset: r.NextOffset() - int64(len(dataBytes))}:
 		case <-ctx.Done():
 			err = ctx.Err()
 			return
@@ -265,7 +265,7 @@ func (qf *qfile) StreamRead(ctx context.Context, offset int64, ch chan<- []byte)
 
 }
 
-func (qf *qfile) StreamOffsetRead(ctx context.Context, offset int64, offsetCh <-chan int64, ch chan<- []byte) (otherFile bool, lastOffset int64, err error) {
+func (qf *qfile) StreamOffsetRead(ctx context.Context, offset int64, offsetCh <-chan int64, ch chan<- StreamBytes) (otherFile bool, lastOffset int64, err error) {
 	fileOffset, err := qf.calcFileOffset(offset)
 	if err != nil {
 		logger.Instance().Fatal("calcFileOffset err", zap.Int64("offset", offset), zap.Int64("startOffset", qf.startOffset))
@@ -294,7 +294,7 @@ func (qf *qfile) StreamOffsetRead(ctx context.Context, offset int64, offsetCh <-
 		}
 
 		select {
-		case ch <- dataBytes:
+		case ch <- StreamBytes{Bytes: dataBytes, Offset: r.NextOffset() - int64(len(dataBytes))}:
 		case <-ctx.Done():
 			err = ctx.Err()
 			return
