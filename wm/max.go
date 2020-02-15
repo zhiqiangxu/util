@@ -37,6 +37,17 @@ func (m *Max) Enter(ctx context.Context) error {
 	return nil
 }
 
+// TryEnter returns true if succeed
+func (m *Max) TryEnter() bool {
+	count := atomic.AddInt64(&m.count, 1)
+	if count > m.max {
+		m.exit()
+		return false
+	}
+
+	return true
+}
+
 // Exit should only be called if Enter returns nil
 func (m *Max) Exit() {
 	count := m.exit()
