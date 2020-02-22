@@ -1,7 +1,7 @@
 package closer
 
 // Closer defines the shape of every closer
-// Individual closers may have more helper methods and different guarantees
+// Specific closers may have more helper methods and different guarantees
 type Closer interface {
 	Add(delta int)
 	SignalAndWait()
