@@ -31,8 +31,9 @@ func New(cfg zap.Config) (logger *zap.Logger, err error) {
 		return
 	}
 
+	logLevel := cfg.Level.Level()
 	stdoutPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
-		return lvl == zapcore.InfoLevel
+		return lvl >= logLevel && lvl < zapcore.ErrorLevel
 	})
 	stderrPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
 		return lvl >= zapcore.ErrorLevel
