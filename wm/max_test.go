@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"golang.org/x/sync/semaphore"
 )
 
 func TestBasicEnter(t *testing.T) {
@@ -223,6 +225,66 @@ func BenchmarkSyncMutex(b *testing.B) {
 					for j := 0; j < b.N; j++ {
 						m.Lock()
 						m.Unlock()
+					}
+					end.Done()
+				}()
+			}
+
+			ready.Wait()
+			b.ResetTimer()
+			close(begin)
+			end.Wait()
+		})
+	}
+}
+
+func BenchmarkChan(b *testing.B) {
+	for n, max := 1, 4*runtime.GOMAXPROCS(0); n > 0 && n <= max; n *= 2 {
+		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+			ch := make(chan struct{}, 1)
+
+			var ready sync.WaitGroup
+			begin := make(chan struct{})
+			var end sync.WaitGroup
+			for i := 0; i < n; i++ {
+				ready.Add(1)
+				end.Add(1)
+				go func() {
+					ready.Done()
+					<-begin
+					for j := 0; j < b.N; j++ {
+						ch <- struct{}{}
+						<-ch
+					}
+					end.Done()
+				}()
+			}
+
+			ready.Wait()
+			b.ResetTimer()
+			close(begin)
+			end.Wait()
+		})
+	}
+}
+
+func BenchmarkSemaphore(b *testing.B) {
+	for n, max := 1, 4*runtime.GOMAXPROCS(0); n > 0 && n <= max; n *= 2 {
+		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+			sema := semaphore.NewWeighted(1)
+
+			var ready sync.WaitGroup
+			begin := make(chan struct{})
+			var end sync.WaitGroup
+			for i := 0; i < n; i++ {
+				ready.Add(1)
+				end.Add(1)
+				go func() {
+					ready.Done()
+					<-begin
+					for j := 0; j < b.N; j++ {
+						sema.Acquire(context.Background(), 1)
+						sema.Release(1)
 					}
 					end.Done()
 				}()
