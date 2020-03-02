@@ -1,6 +1,7 @@
 package closer
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 )
@@ -24,18 +25,24 @@ func NewStrict() *Strict {
 	return s
 }
 
+var (
+	errAlreadyClosed = errors.New("closer already closed")
+)
+
 // Add delta to wait group
-// Trying to Add positive delta after Wait will panic
-func (s *Strict) Add(delta int) {
+// Trying to Add positive delta after Wait will return non nil error
+func (s *Strict) Add(delta int) (err error) {
 	if delta > 0 {
 		if s.HasBeenClosed() {
-			panic("Add after Wait")
+			err = errAlreadyClosed
+			return
 		}
 
 		s.mu.RLock()
 		if s.closed != 0 {
 			s.mu.RUnlock()
-			panic("Add after Wait")
+			err = errAlreadyClosed
+			return
 		}
 	}
 
@@ -51,8 +58,9 @@ func (s *Strict) Add(delta int) {
 			s.cond.Signal()
 		}
 		s.mu.RUnlock()
-
 	}
+
+	return
 }
 
 // HasBeenClosed tells whether closed
