@@ -5,9 +5,16 @@ import (
 	_ "unsafe" // required by go:linkname
 )
 
+// FYI: https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+//		https://github.com/golang/go/blob/b5c66de0892d0e9f3f59126eeebc31070e79143b/src/runtime/stubs.go#L115
+
 // FastRand returns a lock free uint32 value.
 //go:linkname FastRand runtime.fastrand
 func FastRand() uint32
+
+// FastRandN returns a random number in [0, n)
+//go:linkname FastRandN runtime.fastrandn
+func FastRandN(uint32) uint32
 
 // FastRand64 returns a random uint64 without lock
 func FastRand64() (result uint64) {
