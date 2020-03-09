@@ -19,8 +19,23 @@ const (
 // Env for chosen environment
 var Env EnvType
 
+var (
+	logger *zap.Logger
+)
+
+// SetInstance for set logger instance
+func SetInstance(zl *zap.Logger) {
+	logger = zl
+}
+
 // Instance for chosen logger
+// you can change the actual instance by either:
+// 1. change Env
+// 2. call SetInstance
 func Instance() *zap.Logger {
+	if logger != nil {
+		return logger
+	}
 	switch Env {
 	case Prod:
 		return ProdInstance()
