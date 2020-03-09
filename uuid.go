@@ -1,10 +1,30 @@
 package util
 
 import (
-	"crypto/rand"
-	"encoding/binary"
 	"math"
+	_ "unsafe" // required by go:linkname
 )
+
+// FastRand returns a lock free uint32 value.
+//go:linkname FastRand runtime.fastrand
+func FastRand() uint32
+
+// FastRand64 returns a random uint64 without lock
+func FastRand64() (result uint64) {
+	a := FastRand()
+	b := FastRand()
+	result = uint64(a)<<32 + uint64(b)
+	return
+}
+
+// FastRand64N returns, as an uint64, a pseudo-random number in [0,n).
+func FastRand64N(n uint64) uint64 {
+	v := FastRand64()
+	if n&(n-1) == 0 { // n is power of two, can mask
+		return v & (n - 1)
+	}
+	return v % n
+}
 
 // PoorManUUID generate a uint64 uuid
 func PoorManUUID(client bool) (result uint64) {
@@ -19,13 +39,6 @@ func PoorManUUID(client bool) (result uint64) {
 }
 
 // PoorManUUID2 doesn't care whether client/server side
-func PoorManUUID2() (result uint64) {
-	buf := make([]byte, 8)
-	rand.Read(buf)
-	result = binary.LittleEndian.Uint64(buf)
-	if result == 0 {
-		result = math.MaxUint64
-	}
-
-	return
+func PoorManUUID2() uint64 {
+	return FastRand64()
 }
