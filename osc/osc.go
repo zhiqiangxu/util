@@ -23,18 +23,6 @@ const (
 	StatePublic
 )
 
-// SchemaChange is the subject for osc
-// each method should block until the state has been synced, or error
-type SchemaChange interface {
-	GetState() SchemaState
-	EnterAbsent() error
-	EnterDeleteOnly(add bool) error
-	EnterWriteOnly(add bool) error
-	EnterReorgAfterWriteOnly() error
-	EnterReorgAfterDeleteOnly() error
-	EnterPublic() error
-}
-
 // AddSchemaChange for add schema change
 // each method should block until the state has been synced, or error
 type AddSchemaChange interface {
