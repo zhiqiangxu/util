@@ -35,101 +35,96 @@ type SchemaChange interface {
 	EnterPublic() error
 }
 
+// AddSchemaChange for add schema change
+// each method should block until the state has been synced, or error
+type AddSchemaChange interface {
+	GetState() SchemaState
+	EnterDeleteOnly() error
+	EnterWriteOnly() error
+	EnterReorgAfterWriteOnly() error
+	EnterPublic() error
+}
+
+// DeleteSchemaChange for delete schema change
+// each method should block until the state has been synced, or error
+type DeleteSchemaChange interface {
+	GetState() SchemaState
+	EnterWriteOnly() error
+	EnterDeleteOnly() error
+	EnterReorgAfterDeleteOnly() error
+	EnterAbsent() error
+}
+
 const (
-	errFormat = "state not expected, got %d should %d"
+	errInvalidState = "invalid state %d"
 )
 
-// Start osc process
-func Start(s SchemaChange, add bool) (err error) {
-	switch add {
-	case true:
-		// add schema
+// StepAdd for a single add schema state transition
+func StepAdd(asc AddSchemaChange) (err error) {
+	state := asc.GetState()
+	switch state {
+	case StateAbsent:
+		err = asc.EnterDeleteOnly()
+		return
+	case StateDeleteOnly:
+		err = asc.EnterWriteOnly()
+		return
+	case StateWriteOnly:
+		err = asc.EnterReorgAfterWriteOnly()
+		return
+	case StateWriteReorganization:
+		err = asc.EnterPublic()
+		return
+	case StatePublic:
+		return
+	default:
+		err = fmt.Errorf(errInvalidState, state)
+		return
+	}
+}
 
-		state := s.GetState()
-		if state != StateAbsent {
-			err = fmt.Errorf(errFormat, state, StateAbsent)
-			return
-		}
-		err = s.EnterDeleteOnly(add)
-		if err != nil {
-			return
-		}
-		state = s.GetState()
-		if state != StateDeleteOnly {
-			err = fmt.Errorf(errFormat, state, StateDeleteOnly)
-			return
-		}
-		err = s.EnterWriteOnly(add)
-		if err != nil {
-			return
-		}
-		state = s.GetState()
-		if state != StateWriteOnly {
-			err = fmt.Errorf(errFormat, state, StateWriteOnly)
-			return
-		}
-		err = s.EnterReorgAfterWriteOnly()
-		if err != nil {
-			return
-		}
-		state = s.GetState()
-		if state != StateWriteReorganization {
-			err = fmt.Errorf(errFormat, state, StateWriteReorganization)
-			return
-		}
-		err = s.EnterPublic()
-		if err != nil {
-			return
-		}
-		state = s.GetState()
-		if state != StatePublic {
-			err = fmt.Errorf(errFormat, state, StatePublic)
-			return
-		}
+// StepDelete for a single delete schema state transition
+func StepDelete(dsc DeleteSchemaChange) (err error) {
+	state := dsc.GetState()
+	switch state {
+	case StatePublic:
+		err = dsc.EnterWriteOnly()
+		return
+	case StateWriteOnly:
+		err = dsc.EnterDeleteOnly()
+		return
+	case StateDeleteOnly:
+		err = dsc.EnterReorgAfterDeleteOnly()
+		return
+	case StateDeleteReorganization:
+		err = dsc.EnterAbsent()
+		return
+	case StateAbsent:
+		return
+	default:
+		err = fmt.Errorf(errInvalidState, state)
+		return
+	}
+}
 
-	case false:
-
-		// delete schema
-
-		state := s.GetState()
-		if state != StatePublic {
-			err = fmt.Errorf(errFormat, state, StatePublic)
-			return
-		}
-
-		err = s.EnterWriteOnly(add)
+// StartAdd for start osc add process
+func StartAdd(asc AddSchemaChange) (err error) {
+	for asc.GetState() != StatePublic {
+		err = StepAdd(asc)
 		if err != nil {
-			return
-		}
-		if state != StateWriteOnly {
-			err = fmt.Errorf(errFormat, state, StateWriteOnly)
-			return
-		}
-		err = s.EnterDeleteOnly(add)
-		if err != nil {
-			return
-		}
-		if state != StateDeleteOnly {
-			err = fmt.Errorf(errFormat, state, StateDeleteOnly)
-			return
-		}
-		err = s.EnterReorgAfterDeleteOnly()
-		if err != nil {
-			return
-		}
-		if state != StateDeleteReorganization {
-			err = fmt.Errorf(errFormat, state, StateDeleteReorganization)
-			return
-		}
-		err = s.EnterAbsent()
-		if err != nil {
-			return
-		}
-		if state != StateAbsent {
-			err = fmt.Errorf(errFormat, state, StateAbsent)
 			return
 		}
 	}
+	return
+}
 
+// StartDelete for start osc delete process
+func StartDelete(dsc DeleteSchemaChange) (err error) {
+	for dsc.GetState() != StateAbsent {
+		err = StepDelete(dsc)
+		if err != nil {
+			return
+		}
+	}
 	return
 }
