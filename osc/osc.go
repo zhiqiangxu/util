@@ -116,3 +116,23 @@ func StartDelete(dsc DeleteSchemaChange) (err error) {
 	}
 	return
 }
+
+// String implements fmt.Stringer interface.
+func (s SchemaState) String() string {
+	switch s {
+	case StateAbsent:
+		return "absent"
+	case StateDeleteOnly:
+		return "delete only"
+	case StateWriteOnly:
+		return "write only"
+	case StateWriteReorganization:
+		return "write reorganization"
+	case StateDeleteReorganization:
+		return "delete reorganization"
+	case StatePublic:
+		return "public"
+	default:
+		return fmt.Sprintf(errInvalidState, s)
+	}
+}
