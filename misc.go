@@ -33,13 +33,14 @@ func TryUntilSuccess(f func() bool, duration time.Duration) {
 func RunWithRecovery(exec func(), recoverFn func(r interface{})) {
 	defer func() {
 		r := recover()
-		if recoverFn != nil {
-			recoverFn(r)
-		}
 		if r != nil {
 			logger.Instance().Error("panic in the recoverable goroutine",
 				zap.Reflect("r", r),
 				zap.Stack("stack trace"))
+
+			if recoverFn != nil {
+				recoverFn(r)
+			}
 		}
 	}()
 	exec()
