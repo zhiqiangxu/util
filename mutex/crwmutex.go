@@ -25,7 +25,7 @@ func (rw *CRWMutex) Lock(ctx context.Context) (err error) {
 }
 
 // Unlock should only be called after a successful Lock
-func (rw *CRWMutex) Unlock() (err error) {
+func (rw *CRWMutex) Unlock() {
 	rw.sema.Release(rwmutexMaxReaders)
 	return
 }
