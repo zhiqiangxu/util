@@ -1,4 +1,4 @@
-package tmutex
+package mutex
 
 import "sync/atomic"
 
