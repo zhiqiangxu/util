@@ -13,12 +13,7 @@ type CMutex struct {
 
 // NewCMutex is ctor for CMutex
 func NewCMutex() *CMutex {
-	m := &CMutex{sema: semaphore.NewWeighted(1)}
-	return m
-}
-
-func (m *CMutex) init() {
-	m.sema = semaphore.NewWeighted(1)
+	return &CMutex{sema: semaphore.NewWeighted(1)}
 }
 
 // Lock with context
