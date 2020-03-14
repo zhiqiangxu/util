@@ -15,7 +15,14 @@ type CRWMutex struct {
 
 // NewCRWMutex is ctor for CRWMutex
 func NewCRWMutex() *CRWMutex {
-	return &CRWMutex{sema: semaphore.NewWeighted(rwmutexMaxReaders)}
+	rw := &CRWMutex{}
+	rw.Init()
+	return rw
+}
+
+// Init for embeded usage
+func (rw *CRWMutex) Init() {
+	rw.sema = semaphore.NewWeighted(rwmutexMaxReaders)
 }
 
 // Lock with context
