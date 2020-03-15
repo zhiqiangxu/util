@@ -23,6 +23,20 @@ func TestCRWMutex(t *testing.T) {
 	}
 	crwm.Unlock()
 
+	// test TryLock/Unlock
+	ok := crwm.TryLock()
+	if !ok {
+		t.FailNow()
+	}
+	crwm.Unlock()
+
+	// test TryRLock/Unlock
+	ok = crwm.TryRLock()
+	if !ok {
+		t.FailNow()
+	}
+	crwm.RUnlock()
+
 	// test RLock/canceled Lock/RUnlock
 	err = crwm.RLock(context.Background())
 	if err != nil {

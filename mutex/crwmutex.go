@@ -8,7 +8,7 @@ import (
 
 const rwmutexMaxReaders = 1 << 30
 
-// CRWMutex implements a cancelable rwmutex
+// CRWMutex implements a cancelable rwmutex (in fact also a try-able rwmutex)
 type CRWMutex struct {
 	sema *semaphore.Weighted
 }
@@ -46,4 +46,14 @@ func (rw *CRWMutex) RLock(ctx context.Context) (err error) {
 // RUnlock should only be called after a successful RLock
 func (rw *CRWMutex) RUnlock() {
 	rw.sema.Release(1)
+}
+
+// TryLock returns true if lock acquired
+func (rw *CRWMutex) TryLock() bool {
+	return rw.sema.TryAcquire(rwmutexMaxReaders)
+}
+
+// TryRLock returns true if rlock acquired
+func (rw *CRWMutex) TryRLock() bool {
+	return rw.sema.TryAcquire(1)
 }
