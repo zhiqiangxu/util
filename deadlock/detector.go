@@ -2,12 +2,14 @@ package deadlock
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/petermattis/goid"
 	"github.com/zhiqiangxu/util"
 )
 
 type detector struct {
+	mu            sync.Mutex
 	ownerResouces map[int64]map[uint64]bool
 	resouceOwners map[uint64]*resourceOwner
 	waitForMap    map[int64]*waitForResource
@@ -33,6 +35,9 @@ func newDetector() *detector {
 
 func (d *detector) onAcquiredLocked(resourceID uint64, w bool) {
 	gid := goid.Get()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
 	// update ownerResouces
 	ownedResources := d.ownerResouces[gid]
@@ -120,6 +125,9 @@ func ParsePanicError(panicErr interface{}) (edl *ErrorDeadlock, errUsage *ErrorU
 func (d *detector) onWaitLocked(resourceID uint64, w bool) {
 	gid := goid.Get()
 
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	if d.waitForMap[gid] != nil {
 		panic("waiting for multiple resources")
 	}
@@ -200,6 +208,9 @@ func (d *detector) doDetect(sourceGID, ownerGID int64) (err *ErrorDeadlock) {
 
 func (d *detector) onReleaseLocked(resourceID uint64, w bool) {
 	gid := goid.Get()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
 	// update ownerResouces
 	ownedResources := d.ownerResouces[gid]
