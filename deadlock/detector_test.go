@@ -40,7 +40,7 @@ func TestDetector(t *testing.T) {
 		lock1.Lock()
 	}()
 
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 300)
 	if errDL == nil {
 		t.FailNow()
 	}
