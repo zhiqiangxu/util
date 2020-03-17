@@ -1,6 +1,6 @@
 # deadlock
 
-This package implements an easy to prove deadlock detector, just replace `sync.Mutex` and `sync.RWMutex` with `deadlock.NewMutex()` and `deadlock.NewRWMutex()` and you're ready to go!!!
+This package implements a deadlock detector with easy to prove correctness, just replace `sync.Mutex` and `sync.RWMutex` with `deadlock.NewMutex()` and `deadlock.NewRWMutex()` and you're ready to go!!!
 
 When something wrong happend, panic will happen.
 
