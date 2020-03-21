@@ -17,7 +17,8 @@ type WorkerPool struct {
 	once     sync.Once
 }
 
-func newWorkerPool() *WorkerPool {
+// NewWorkerPool is ctor for WorkerPool
+func NewWorkerPool() *WorkerPool {
 	wp := &WorkerPool{doneChan: make(chan struct{}), workChan: make(chan func())}
 	wp.Start()
 	return wp
