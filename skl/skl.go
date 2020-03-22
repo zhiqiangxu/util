@@ -13,9 +13,11 @@ const (
 	DefaultProbability float64 = 1 / math.E
 )
 
-type links struct {
-	next []*element
+type link struct {
+	next *element
 }
+
+type links []link
 
 type element struct {
 	links
@@ -29,7 +31,7 @@ type skl struct {
 	length         int
 	probability    float64
 	probTable      []uint32
-	prevLinksCache []*links
+	prevLinksCache []links
 }
 
 // NewSkipList creates a new SkipList
@@ -40,11 +42,11 @@ func NewSkipList() SkipList {
 // NewSkipListWithMaxLevel creates a new SkipList with specified maxLevel
 func NewSkipListWithMaxLevel(maxLevel int) SkipList {
 	return &skl{
-		links:          links{next: make([]*element, maxLevel)},
+		links:          make(links, maxLevel),
 		maxLevel:       maxLevel,
 		probability:    DefaultProbability,
 		probTable:      probabilityTable(DefaultProbability, maxLevel),
-		prevLinksCache: make([]*links, maxLevel),
+		prevLinksCache: make([]links, maxLevel),
 	}
 }
 
@@ -58,21 +60,21 @@ func probabilityTable(probability float64, maxLevel int) (table []uint32) {
 
 func (s *skl) Add(key int64, value interface{}) {
 	prevs := s.getPrevLinks(key)
-	ele := prevs[0].next[0]
+	ele := prevs[0][0].next
 	if ele != nil && ele.key <= key {
 		ele.value = value
 		return
 	}
 
 	ele = &element{
-		links: links{next: make([]*element, s.randLevel())},
+		links: make(links, s.randLevel()),
 		key:   key,
 		value: value,
 	}
 
-	for i := range ele.next {
-		ele.next[i] = prevs[i].next[i]
-		prevs[i].next[i] = ele
+	for i := range ele.links {
+		ele.links[i].next = prevs[i][i].next
+		prevs[i][i].next = ele
 	}
 
 	s.length++
@@ -90,17 +92,17 @@ func (s *skl) randLevel() (level int) {
 }
 
 // 找到每一层上毗邻于该key对应元素之前的links
-func (s *skl) getPrevLinks(key int64) []*links {
-	var prev = &s.links
+func (s *skl) getPrevLinks(key int64) []links {
+	var prev = s.links
 	var current *element
 
 	prevs := s.prevLinksCache
 	for i := s.maxLevel - 1; i >= 0; i-- {
-		current = prev.next[i]
+		current = prev[i].next
 
 		for current != nil && current.key < key {
-			prev = &current.links
-			current = current.next[i]
+			prev = current.links
+			current = current.links[i].next
 		}
 
 		prevs[i] = prev
@@ -110,13 +112,13 @@ func (s *skl) getPrevLinks(key int64) []*links {
 }
 
 func (s *skl) Get(key int64) (value interface{}, ok bool) {
-	prev := &s.links
+	prev := s.links
 	var current *element
 	for i := s.maxLevel - 1; i >= 0; i-- {
-		current = prev.next[i]
+		current = prev[i].next
 		for current != nil && current.key < key {
-			prev = &current.links
-			current = current.next[i]
+			prev = current.links
+			current = current.links[i].next
 		}
 	}
 
@@ -129,19 +131,20 @@ func (s *skl) Get(key int64) (value interface{}, ok bool) {
 
 func (s *skl) Remove(key int64) {
 	prevs := s.getPrevLinks(key)
-	if ele := prevs[0].next[0]; ele != nil && ele.key <= key {
+	if ele := prevs[0][0].next; ele != nil && ele.key <= key {
 
-		for i, iele := range ele.next {
-			prevs[i].next[i] = iele
+		for i, l := range ele.links {
+			prevs[i][i].next = l.next
 		}
 		s.length--
 	}
 }
 
 func (s *skl) Head() (key int64, value interface{}, ok bool) {
-	if s.next[0] != nil {
-		key = s.next[0].key
-		value = s.next[0].value
+	nele := s.links[0].next
+	if nele != nil {
+		key = nele.key
+		value = nele.value
 		ok = true
 	}
 	return

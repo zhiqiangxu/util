@@ -6,9 +6,10 @@ type sklIter struct {
 }
 
 func (it *sklIter) First() (ok bool) {
-	if it.s.next[0] != nil {
+	nele := it.s.links[0].next
+	if nele != nil {
 		ok = true
-		it.node = it.s.next[0]
+		it.node = nele
 	}
 	return
 }
@@ -17,7 +18,7 @@ func (it *sklIter) SeekGE(key int64) (ok bool) {
 
 	prevs := it.s.getPrevLinks(key)
 
-	ele := prevs[0].next[0]
+	ele := prevs[0][0].next
 	if ele != nil {
 		ok = true
 		it.node = ele
@@ -27,7 +28,7 @@ func (it *sklIter) SeekGE(key int64) (ok bool) {
 }
 
 func (it *sklIter) Next() (ok bool) {
-	ele := it.node.next[0]
+	ele := it.node.links[0].next
 	if ele != nil {
 		ok = true
 		it.node = ele
