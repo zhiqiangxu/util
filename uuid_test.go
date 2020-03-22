@@ -3,6 +3,7 @@ package util
 import (
 	"testing"
 
+	"golang.org/x/exp/rand"
 	"gotest.tools/assert"
 )
 
@@ -14,4 +15,17 @@ func TestUUID(t *testing.T) {
 		assert.Assert(t, FastRandN(uint32(i)) < uint32(i))
 	}
 
+}
+
+func BenchmarkFastRand(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		FastRand()
+	}
+}
+
+func BenchmarkPCG(b *testing.B) {
+	r := rand.PCGSource{}
+	for i := 0; i < b.N; i++ {
+		r.Uint64()
+	}
 }
