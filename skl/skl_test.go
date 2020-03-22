@@ -9,6 +9,11 @@ import (
 func TestSKL(t *testing.T) {
 	// test SkipListIterator
 	skl := NewSkipList()
+	{
+		it := skl.NewIterator()
+		ok := it.First()
+		assert.Assert(t, !ok)
+	}
 	total := 10
 	for i := 0; i < total; i++ {
 		skl.Add(int64(i), i)
@@ -43,4 +48,6 @@ func TestSKL(t *testing.T) {
 		}
 	}
 
+	ok = it.SeekGE(int64(total + 1))
+	assert.Assert(t, !ok)
 }
