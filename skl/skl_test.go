@@ -51,3 +51,21 @@ func TestSKL(t *testing.T) {
 	ok = it.SeekGE(int64(total + 1))
 	assert.Assert(t, !ok)
 }
+
+func BenchmarkSKL(b *testing.B) {
+	skl := NewSkipList()
+	for i := 0; i < b.N; i++ {
+		i64 := int64(i)
+		skl.Add(i64, i)
+		skl.Get(i64)
+	}
+}
+
+func BenchmarkMap(b *testing.B) {
+	m := make(map[int64]interface{})
+	for i := 0; i < b.N; i++ {
+		i64 := int64(i)
+		m[i64] = i
+		_ = m[i64]
+	}
+}

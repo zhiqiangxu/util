@@ -1,3 +1,4 @@
+/*Package skl provides a non-concurrent skiplist implementation*/
 package skl
 
 // SkipList for skl interface
