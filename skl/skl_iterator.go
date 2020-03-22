@@ -18,7 +18,7 @@ func (it *sklIter) SeekGE(key int64) (ok bool) {
 
 	prevs := it.s.getPrevLinks(key)
 
-	ele := prevs[0][0].next
+	ele := prevs[0].next
 	if ele != nil {
 		ok = true
 		it.node = ele
