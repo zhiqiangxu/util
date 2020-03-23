@@ -15,9 +15,13 @@ func TestSKL(t *testing.T) {
 		assert.Assert(t, !ok)
 	}
 	total := 10
-	for i := 0; i < total; i++ {
-		skl.Add(int64(i), i)
+	for j := 0; j < 2; j++ {
+		for i := 0; i < total; i++ {
+			skl.Add(int64(i), i)
+		}
 	}
+
+	assert.Assert(t, skl.Length() == total)
 
 	it := skl.NewIterator()
 	ok := it.First()

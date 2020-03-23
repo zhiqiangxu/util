@@ -17,16 +17,14 @@ type link struct {
 	next *element
 }
 
-type links []link
-
 type element struct {
-	links
+	links []link
 	key   int64
 	value interface{}
 }
 
 type skl struct {
-	links
+	links          []link
 	maxLevel       int
 	length         int
 	probability    float64
@@ -42,7 +40,7 @@ func NewSkipList() SkipList {
 // NewSkipListWithMaxLevel creates a new SkipList with specified maxLevel
 func NewSkipListWithMaxLevel(maxLevel int) SkipList {
 	return &skl{
-		links:          make(links, maxLevel),
+		links:          make([]link, maxLevel),
 		maxLevel:       maxLevel,
 		probability:    DefaultProbability,
 		probTable:      probabilityTable(DefaultProbability, maxLevel),
@@ -59,6 +57,11 @@ func probabilityTable(probability float64, maxLevel int) (table []uint32) {
 }
 
 func (s *skl) Add(key int64, value interface{}) {
+	// prev := s.links
+	// for i := s.maxLevel - 1; i >= 0; i-- {
+	// 	s.findSpliceForLevel(key, prev, i)
+	// }
+
 	prevs := s.getPrevLinks(key)
 	ele := prevs[0].next
 	if ele != nil && ele.key <= key {
@@ -67,7 +70,7 @@ func (s *skl) Add(key int64, value interface{}) {
 	}
 
 	ele = &element{
-		links: make(links, s.randLevel()),
+		links: make([]link, s.randLevel()),
 		key:   key,
 		value: value,
 	}
@@ -78,6 +81,10 @@ func (s *skl) Add(key int64, value interface{}) {
 	}
 
 	s.length++
+}
+
+func (s *skl) Length() int {
+	return s.length
 }
 
 func (s *skl) randLevel() (level int) {
@@ -111,6 +118,27 @@ func (s *skl) getPrevLinks(key int64) []*link {
 
 	return prevs
 }
+
+// func (s *skl) findSpliceForLevel(key int64, prev []link, level0based int) (before, next *element) {
+
+// 	current := prev[level0based].next
+// 	for current != nil && current.key < key {
+// 		prev = current.links
+// 		current = prev[level0based].next
+// 	}
+
+// 	before = &prev[level0based]
+
+// 	if current != nil {
+// 		if current.key == key {
+// 			next = before
+// 		} else {
+// 			next = &current.links[level0based]
+// 		}
+// 	}
+
+// 	return
+// }
 
 func (s *skl) Get(key int64) (value interface{}, ok bool) {
 	prev := s.links

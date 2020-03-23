@@ -8,6 +8,7 @@ type SkipList interface {
 	Get(key int64) (value interface{}, ok bool)
 	Remove(key int64)
 	Head() (key int64, value interface{}, ok bool)
+	Length() int
 	NewIterator() SkipListIterator
 }
 
