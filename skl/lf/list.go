@@ -44,7 +44,7 @@ type listNode struct {
 	//   value size  : uint16 (bits 32-63)
 	value     uint64
 	backlink  uint32 // points to the prev node
-	succ      uint32 // contains a right pointer, a mark bit and a flag bit.
+	succ      uint32 // contains a next pointer, a mark bit and a flag bit.
 	keyOffset uint32 // Immutable. No need to lock to access key.
 	keySize   uint16 // Immutable. No need to lock to access key.
 	head      bool
@@ -98,7 +98,7 @@ func (l *List) Insert(k, v []byte) (isNew bool, err error) {
 		// If the predecessor is flagged, help
 		// the corresponding deletion to complete.
 		if prevSucc&flagBit != 0 {
-			l.helpFlagged(prev, l.arena.getListNode(prevSucc&(^markBit)))
+			l.helpFlagged(prev, l.arena.getListNode(prevSucc&bitMask))
 		} else {
 			node.succ = l.arena.getListNodeOffset(next)
 			// Insertion attempt.
@@ -117,12 +117,12 @@ func (l *List) Insert(k, v []byte) (isNew bool, err error) {
 			// Possibly a failure due to marking. Traverse a
 			// chain of backlinks to reach an unmarked node.
 			for prev.Marked() {
-				prev = l.arena.getListNode(prev.backlink)
+				prev = l.arena.getListNode(prev.GetBacklist())
 			}
 		}
 
 		prev, next = l.searchFrom(k, prev, true)
-		if prev != nil && prev.Compare(l.arena, k) == 0 {
+		if prev.Compare(l.arena, k) == 0 {
 			prev.UpdateValue(voffset, uint16(len(v)))
 			return
 		}
@@ -153,20 +153,20 @@ func (l *List) Delete(k []byte) bool {
 // 		n1.key < k <= n2.key.
 func (l *List) searchFrom(k []byte, node *listNode, equal bool) (current, next *listNode) {
 
-	var cmpFunc func(cmp int) bool
+	var cmpFunc func(n *listNode) bool
 	if equal {
-		cmpFunc = func(cmp int) bool {
-			return cmp <= 0
+		cmpFunc = func(n *listNode) bool {
+			return n.Compare(l.arena, k) <= 0
 		}
 	} else {
-		cmpFunc = func(cmp int) bool {
-			return cmp < 0
+		cmpFunc = func(n *listNode) bool {
+			return n.Compare(l.arena, k) < 0
 		}
 	}
 
 	current = node
 	next = node.Next(l.arena)
-	for next != nil && cmpFunc(next.Compare(l.arena, k)) {
+	for next != nil && cmpFunc(next) {
 		for {
 			nextSuc := next.Succ()
 			currentSuc := current.Succ()
@@ -185,7 +185,7 @@ func (l *List) searchFrom(k []byte, node *listNode, equal bool) (current, next *
 			}
 		}
 
-		if next != nil && cmpFunc(next.Compare(l.arena, k)) {
+		if next != nil && cmpFunc(next) {
 			current = next
 			next = current.Next(l.arena)
 		}
@@ -197,8 +197,8 @@ func (l *List) searchFrom(k []byte, node *listNode, equal bool) (current, next *
 // Attempts to physically delete the marked
 // node del node and unflag prev node.
 func (l *List) helpMarked(prev, del *listNode) {
-	next := del.Next(l.arena)
-	atomic.CompareAndSwapUint32(&prev.succ, l.arena.getListNodeOffset(del)+flagBit, l.arena.getListNodeOffset(next))
+	next := del.Succ() & bitMask
+	atomic.CompareAndSwapUint32(&prev.succ, l.arena.getListNodeOffset(del)+flagBit, next)
 }
 
 // Attempts to flag the predecessor of target node. P rev node is the last node known to be the predecessor.
@@ -226,7 +226,7 @@ func (l *List) tryFlag(prev, target *listNode) (n *listNode, flagged bool) {
 
 		// possibly failure due to marking
 		for prev.Marked() {
-			prev = l.arena.getListNode(prev.backlink)
+			prev = l.arena.getListNode(prev.GetBacklist())
 		}
 
 		var del *listNode
@@ -242,11 +242,11 @@ func (l *List) tryFlag(prev, target *listNode) (n *listNode, flagged bool) {
 // Attempts to mark the node del node.
 func (l *List) tryMark(del *listNode) {
 	for !del.Marked() {
-		right := del.Succ() & (^markBit)
-		swapped := atomic.CompareAndSwapUint32(&del.succ, right, right+markBit)
+		next := del.Succ() & bitMask
+		swapped := atomic.CompareAndSwapUint32(&del.succ, next, next+markBit)
 		if !swapped {
-			if atomic.LoadUint32(&del.succ)&flagBit != 0 {
-				l.helpFlagged(del, l.arena.getListNode(right))
+			if del.Flagged() {
+				l.helpFlagged(del, l.arena.getListNode(next))
 			}
 		}
 	}
@@ -255,7 +255,7 @@ func (l *List) tryMark(del *listNode) {
 // Attempts to mark and physically delete node del node,
 // which is the successor of the flagged node prev node.
 func (l *List) helpFlagged(prev, del *listNode) {
-	del.backlink = l.arena.getListNodeOffset(prev)
+	del.SetBacklist(l.arena.getListNodeOffset(prev))
 
 	l.tryMark(del)
 	l.helpMarked(prev, del)
@@ -283,7 +283,7 @@ func encodeValue(valOffset uint32, valSize uint16) uint64 {
 
 func decodeValue(value uint64) (valOffset uint32, valSize uint16) {
 	valSize = uint16(value >> 32)
-	valOffset = uint32(value & 0xffffffff)
+	valOffset = uint32(value)
 	return
 }
 
@@ -312,6 +312,14 @@ func (n *listNode) Value(arena *Arena) []byte {
 func (n *listNode) UpdateValue(offset uint32, size uint16) {
 	value := encodeValue(offset, size)
 	atomic.StoreUint64(&n.value, value)
+}
+
+func (n *listNode) SetBacklist(prevOffset uint32) {
+	atomic.StoreUint32(&n.backlink, prevOffset)
+}
+
+func (n *listNode) GetBacklist() uint32 {
+	return atomic.LoadUint32(&n.backlink)
 }
 
 func (n *listNode) Next(arena *Arena) *listNode {
