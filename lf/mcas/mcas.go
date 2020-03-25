@@ -32,7 +32,7 @@ const (
 func mcfromPointer(v unsafe.Pointer) *mcDesc {
 	ptr := uintptr(v)
 	ptr = ptr & ^uintptr(addrMask)
-	return (*mcDesc)(unsafe.Pointer(ptr))
+	return (*mcDesc)(are.getPointer(ptr))
 }
 
 func (d *mcDesc) toPointer() unsafe.Pointer {

@@ -4,7 +4,8 @@ import "unsafe"
 
 // CompareAndSwap for multiple pointer type variables
 func CompareAndSwap(a []*unsafe.Pointer, e []unsafe.Pointer, n []unsafe.Pointer) (swapped bool) {
-	d := &mcDesc{a: a, e: e, n: n, s: undecided}
+	d := are.putMCDesc()
+	*d = mcDesc{a: a, e: e, n: n, s: undecided}
 	/* Memory locations must be sorted into address order. */
 	d.sortAddr()
 	swapped = d.mcasHelp()

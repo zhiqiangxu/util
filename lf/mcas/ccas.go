@@ -26,7 +26,7 @@ func isCCDesc(v unsafe.Pointer) bool {
 func ccfromPointer(v unsafe.Pointer) *ccDesc {
 	ptr := uintptr(v)
 	ptr = ptr & ^uintptr(addrMask)
-	return (*ccDesc)(unsafe.Pointer(ptr))
+	return (*ccDesc)(are.getPointer(ptr))
 }
 
 func (d *ccDesc) toPointer() unsafe.Pointer {
@@ -34,7 +34,8 @@ func (d *ccDesc) toPointer() unsafe.Pointer {
 }
 
 func ccas(a *unsafe.Pointer, e, n unsafe.Pointer, sp *uint32) (ok, swapped, isn bool) {
-	d := &ccDesc{a: a, e: e, n: n, sp: sp}
+	d := are.putCCDesc()
+	*d = ccDesc{a: a, e: e, n: n, sp: sp}
 	var v unsafe.Pointer
 	for !atomic.CompareAndSwapPointer(d.a, d.e, d.toPointer()) {
 		v = atomic.LoadPointer(d.a)
