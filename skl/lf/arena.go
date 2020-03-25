@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/zhiqiangxu/util/bytes"
 )
 
 // Arena is lock free
@@ -21,16 +23,9 @@ var (
 func NewArena(n uint32) *Arena {
 
 	// offset 0 is reserved for nil value
-	out := &Arena{n: 1, buf: makeAlignedBuf(n)}
+	out := &Arena{n: 1, buf: bytes.AlignedTo8(n)}
 
 	return out
-}
-
-func makeAlignedBuf(n uint32) []byte {
-	buf := make([]byte, int(n)+nodeAlign)
-	buf0Alignment := uint32(uintptr(unsafe.Pointer(&buf[0]))) & uint32(nodeAlign)
-	buf = buf[buf0Alignment : buf0Alignment+n]
-	return buf
 }
 
 func (a *Arena) putKV(k, v []byte) (koff, voff uint32, err error) {

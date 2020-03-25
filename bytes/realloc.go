@@ -1,7 +1,7 @@
-package util
+package bytes
 
-// ReallocBytes is like realloc.
-func ReallocBytes(b []byte, n int) []byte {
+// Realloc is like realloc of c.
+func Realloc(b []byte, n int) []byte {
 	newSize := len(b) + n
 	if cap(b) < newSize {
 		bs := make([]byte, len(b), newSize)
