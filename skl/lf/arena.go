@@ -20,13 +20,17 @@ var (
 // NewArena is ctor for Arena
 func NewArena(n uint32) *Arena {
 
-	// FYI https://go101.org/article/memory-layout.html
-	// The first word in a variable or in an allocated struct, array, or slice can be relied upon to be 64-bit aligned.
-
 	// offset 0 is reserved for nil value
-	out := &Arena{n: 1, buf: make([]byte, n)}
+	out := &Arena{n: 1, buf: makeAlignedBuf(n)}
 
 	return out
+}
+
+func makeAlignedBuf(n uint32) []byte {
+	buf := make([]byte, int(n)+nodeAlign)
+	buf0Alignment := uint32(uintptr(unsafe.Pointer(&buf[0]))) & uint32(nodeAlign)
+	buf = buf[buf0Alignment : buf0Alignment+n]
+	return buf
 }
 
 func (a *Arena) putKV(k, v []byte) (koff, voff uint32, err error) {
