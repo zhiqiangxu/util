@@ -59,20 +59,30 @@ func (d *mcDesc) mcasHelp() (suc bool) {
 		for {
 			ccas(d.a[i], d.e[i], d.toPointer(), &d.s)
 			v = atomic.LoadPointer(d.a[i])
-			if v == d.e[i] && d.status() == undecided {
-				continue
-			}
 			if v == d.toPointer() {
 				break
 			}
-			if !isMCDesc(v) {
-				goto decision_point
+
+			if isCCDesc(v) {
+				ccfromPointer(v).ccasHelp()
+				continue
+			} else if isMCDesc(v) {
+				mcfromPointer(v).mcasHelp()
+				continue
 			}
-			mcfromPointer(v).mcasHelp()
+
+			// v is plain pointer value
+
+			if v == d.e[i] && d.status() == undecided {
+				continue
+			}
+
+			goto decision_point
 		}
 	}
 
 	ds = successful
+
 decision_point:
 
 	atomic.CompareAndSwapUint32(&d.s, undecided, ds)
