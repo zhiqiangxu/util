@@ -9,6 +9,10 @@ import (
 func SetupHandler(handler func(os.Signal), s ...os.Signal) {
 	sigCh := make(chan os.Signal, 1)
 
+	if len(s) == 0 {
+		panic("signal missing")
+	}
+
 	signal.Notify(sigCh, s...)
 
 	go func() {
