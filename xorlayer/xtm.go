@@ -1,8 +1,10 @@
 package xorlayer
 
 import (
+	"context"
 	"math/bits"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/zhiqiangxu/util/sort"
@@ -15,6 +17,11 @@ const (
 	bitSize = int(unsafe.Sizeof(NodeID(0)) * 8)
 )
 
+// Callback is used by XTM
+type Callback interface {
+	Ping(ctx context.Context, nodeID NodeID) error
+}
+
 // XTM manages xor topology
 type XTM struct {
 	sync.RWMutex
@@ -23,36 +30,53 @@ type XTM struct {
 	theta   int // for delimiting close region
 	id      NodeID
 	buckets []*bucket
+	cb      Callback
 }
 
 // NewXTM is ctor for XTM
 // caller is responsible for dealing with duplicate NodeID
-func NewXTM(k, h int, id NodeID) *XTM {
+func NewXTM(k, h int, id NodeID, cb Callback) *XTM {
 	buckets := make([]*bucket, bitSize)
 	for i := range buckets {
 		buckets[i] = newBucket()
 	}
-	x := &XTM{k: k, theta: -1, id: id, buckets: buckets}
+	x := &XTM{k: k, theta: -1, id: id, buckets: buckets, cb: cb}
 	return x
 }
 
-func (x *XTM) AddNeighbours(ns []NodeID) {
+// AddNeighbours is batch for AddNeighbour
+func (x *XTM) AddNeighbours(ns []NodeID, cookies []uint64) {
 	x.Lock()
-	defer x.Unlock()
 
-	for _, n := range ns {
-		x.addNeighbourLocked(n)
+	var unlocked bool
+
+	for i, n := range ns {
+		unlocked = x.addNeighbourLocked(n, cookies[i])
+		if unlocked {
+			unlocked = false
+			x.Lock()
+		}
+	}
+
+	if !unlocked {
+		x.Unlock()
 	}
 }
 
-func (x *XTM) AddNeighbour(n NodeID) {
+// AddNeighbour tries to add NodeID with cookie to kbucket
+func (x *XTM) AddNeighbour(n NodeID, cookie uint64) {
 	x.Lock()
-	defer x.Unlock()
 
-	x.addNeighbourLocked(n)
+	if !x.addNeighbourLocked(n, cookie) {
+		x.Unlock()
+	}
 }
 
-func (x *XTM) addNeighbourLocked(n NodeID) {
+const (
+	pingTimeout = time.Second * 2
+)
+
+func (x *XTM) addNeighbourLocked(n NodeID, cookie uint64) (unlocked bool) {
 	i := x.getBucketIdx(n)
 
 	if i >= bitSize {
@@ -68,11 +92,28 @@ func (x *XTM) addNeighbourLocked(n NodeID) {
 	if i <= x.theta {
 		// at most |x.k + x.h|
 		if bucket.size() < (x.k + x.h) {
-			bucket.insert(n)
+			bucket.insert(n, cookie)
+		} else {
+			if x.cb != nil {
+				oldest := bucket.oldest()
+				x.Unlock()
+				ctx, cancelFunc := context.WithTimeout(context.Background(), pingTimeout)
+				defer cancelFunc()
+
+				err := x.cb.Ping(ctx, oldest.N)
+				if err != nil {
+					x.Lock()
+					if bucket.remove(oldest.N, oldest.Cookie) {
+						bucket.insert(n, cookie)
+					}
+				} else {
+					unlocked = true
+				}
+			}
 		}
 	} else {
 		// no limit
-		bucket.insert(n)
+		bucket.insert(n, cookie)
 
 		// increment theta if necessary
 
@@ -94,15 +135,17 @@ func (x *XTM) addNeighbourLocked(n NodeID) {
 		}
 
 	}
+
+	return
 }
 
-func (x *XTM) delNeighbourLocked(n NodeID) {
+func (x *XTM) delNeighbourLocked(n NodeID, cookie uint64) {
 	i := x.getBucketIdx(n)
 	if i >= bitSize {
 		return
 	}
 
-	x.buckets[i].remove(n)
+	x.buckets[i].remove(n, cookie)
 
 	if i <= x.theta {
 		// decrement theta if necessary
@@ -126,22 +169,25 @@ func (x *XTM) getBucketIdx(n NodeID) int {
 	return lz
 }
 
-func (x *XTM) DelNeighbours(ns []NodeID) {
+// DelNeighbours is batch for DelNeighbour
+func (x *XTM) DelNeighbours(ns []NodeID, cookies []uint64) {
 	x.Lock()
 	defer x.Unlock()
 
-	for _, n := range ns {
-		x.delNeighbourLocked(n)
+	for i, n := range ns {
+		x.delNeighbourLocked(n, cookies[i])
 	}
 }
 
-func (x *XTM) DelNeighbour(n NodeID) {
+// DelNeighbour by NodeID and cookie
+func (x *XTM) DelNeighbour(n NodeID, cookie uint64) {
 	x.Lock()
 	defer x.Unlock()
 
-	x.delNeighbourLocked(n)
+	x.delNeighbourLocked(n, cookie)
 }
 
+// NeighbourCount returns total neighbour count
 func (x *XTM) NeighbourCount() (total int) {
 	x.RLock()
 	defer x.RUnlock()

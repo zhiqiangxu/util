@@ -14,11 +14,12 @@ import (
 func TestXTM(t *testing.T) {
 	nodeID := NodeID(1)
 	k, h := 4, 1
-	x := NewXTM(k, h, nodeID)
+	x := NewXTM(k, h, nodeID, nil)
 
 	assert.Assert(t, x.getBucketIdx(nodeID) == bitSize)
 
 	total := 10000
+	cookie := uint64(0)
 	neighbours := make(map[NodeID]bool)
 	for i := 0; i < total; i++ {
 		n := NodeID(rand.Uint64())
@@ -29,7 +30,7 @@ func TestXTM(t *testing.T) {
 			continue
 		}
 		neighbours[n] = true
-		x.AddNeighbour(n)
+		x.AddNeighbour(n, cookie)
 	}
 
 	kclosest := x.KClosest(nodeID)

@@ -11,34 +11,49 @@ type bucket struct {
 	l *list.List
 }
 
+type nodeWithCookie struct {
+	N      NodeID
+	Cookie uint64
+}
+
 func newBucket() *bucket {
 	return &bucket{m: make(map[NodeID]*list.Element), l: list.New()}
 }
 
-func (b *bucket) insert(n NodeID) {
+func (b *bucket) insert(n NodeID, cookie uint64) {
 	e := b.m[n]
 	if e != nil {
+		e.Value.(*nodeWithCookie).Cookie = cookie
 		b.l.MoveToFront(e)
 	} else {
-		e = b.l.PushFront(n)
+		nwc := &nodeWithCookie{
+			N:      n,
+			Cookie: cookie,
+		}
+		e = b.l.PushFront(nwc)
 		b.m[n] = e
 	}
 }
 
-func (b *bucket) remove(n NodeID) {
+func (b *bucket) remove(n NodeID, cookie uint64) (removed bool) {
 	e := b.m[n]
 	if e != nil {
+		if e.Value.(*nodeWithCookie).Cookie != cookie {
+			return
+		}
+		removed = true
 		b.l.Remove(e)
 		delete(b.m, n)
 	}
+	return
 }
 
 func (b *bucket) reduceTo(max int) {
 	for b.size() > max {
 		e := b.l.Back()
-		n := e.Value.(NodeID)
-		delete(b.m, n)
-		b.l.Remove(b.l.Back())
+		nwc := e.Value.(*nodeWithCookie)
+		delete(b.m, nwc.N)
+		b.l.Remove(e)
 	}
 }
 
@@ -92,6 +107,6 @@ func (b *bucket) appendAll(r []NodeID) []NodeID {
 	return r
 }
 
-func (b *bucket) oldest() NodeID {
-	return b.l.Back().Value.(NodeID)
+func (b *bucket) oldest() nodeWithCookie {
+	return *b.l.Back().Value.(*nodeWithCookie)
 }
