@@ -3,7 +3,6 @@ package p256
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/hmac"
@@ -72,6 +71,7 @@ func H2(m []byte) *big.Int {
 	}
 }
 
+// Hash converts alpha to beta+proof
 func (k PrivateKey) Hash(alpha []byte) (beta [32]byte, proof []byte, err error) {
 	r, _, _, err := elliptic.GenerateKey(curve, rand.Reader)
 	if err != nil {
@@ -123,11 +123,12 @@ func (k PrivateKey) Hash(alpha []byte) (beta [32]byte, proof []byte, err error) 
 	return
 }
 
-// Public returns the corresponding public key as bytes.
-func (k PrivateKey) Public() crypto.PublicKey {
-	return &k.PublicKey
+// Public returns the corresponding public key as Verifier.
+func (k PrivateKey) Public() vrf.Verifier {
+	return PublicKey{PublicKey: &k.PublicKey}
 }
 
+// Verify that beta+proof is generated from m by PrivateKey
 func (pk PublicKey) Verify(m, proof []byte, beta [32]byte) (valid bool, err error) {
 	// verifier checks that s == H2(m, [t]G + [s]([k]G), [t]H1(m) + [s]VRF_k(m))
 	if got, want := len(proof), 64+65; got != want {
