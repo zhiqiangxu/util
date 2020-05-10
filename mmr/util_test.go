@@ -55,16 +55,16 @@ func TestMMR(t *testing.T) {
 	assert.Assert(t, len(ap3) == proofLength(h3Idx, mmr.Size()))
 
 	// h2's proof is returned by Push
-	err = mmr.VerifyExists(h2, rootHash2, h2Idx, h2Idx+1, ap2)
+	err = mmr.VerifyInclusion(h2, rootHash2, h2Idx, h2Idx+1, ap2)
 	assert.Assert(t, err == nil)
 
 	// h3's proof is returned by Push
-	err = mmr.VerifyExists(h3, mmr.Root(), h3Idx, h3Idx+1, ap3)
+	err = mmr.VerifyInclusion(h3, mmr.Root(), h3Idx, h3Idx+1, ap3)
 	assert.Assert(t, err == nil)
 
 	// generate proof for h1 wrt current root
-	proof, err := mmr.GenProof(h1Idx, mmr.Size())
+	proof, err := mmr.InclusionProof(h1Idx, mmr.Size())
 	assert.Assert(t, err == nil)
-	err = mmr.VerifyExists(h1, mmr.Root(), h1Idx, mmr.Size(), proof)
+	err = mmr.VerifyInclusion(h1, mmr.Root(), h1Idx, mmr.Size(), proof)
 	assert.Assert(t, err == nil)
 }

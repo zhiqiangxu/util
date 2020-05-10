@@ -110,8 +110,8 @@ var (
 	ErrHashStoreNotAvailable = errors.New("hash store not available")
 )
 
-// GenProof returns the audit path of ti wrt size
-func (m *MMR) GenProof(leafIdx, size uint64) (hashes []HashType, err error) {
+// InclusionProof returns the audit path of ti wrt size
+func (m *MMR) InclusionProof(leafIdx, size uint64) (hashes []HashType, err error) {
 	if leafIdx >= size {
 		err = fmt.Errorf("wrong parameters")
 		return
@@ -184,7 +184,7 @@ func (m *MMR) GenProof(leafIdx, size uint64) (hashes []HashType, err error) {
 	return
 }
 
-func (m *MMR) VerifyExists(leafHash, rootHash HashType, leafIdx, size uint64, proof []HashType) (err error) {
+func (m *MMR) VerifyInclusion(leafHash, rootHash HashType, leafIdx, size uint64, proof []HashType) (err error) {
 	if m.size < size {
 		err = ErrRootNotAvailableYet
 		return
