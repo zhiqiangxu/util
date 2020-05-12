@@ -147,7 +147,7 @@ func (m *MMR) InclusionProof(leafIdx, size uint64) (hashes []HashType, err error
 		// if leafIdx is within Msub, we find the proof for Msub and bag it with the right side
 		//
 		// if leafIdx is out of Msub, we find the proof for the right side and bag it with the peak of Msub
-		lpLeaf := leftPeakLeaf(size - 1)
+		lpLeaf := leftPeakLeaf(size - 1) // -1 for a proper one
 		if leafIdx < lpLeaf {
 			rightPeaks := getMoutainPeaks(size - lpLeaf)
 			rightHashes := make([]HashType, len(rightPeaks), len(rightPeaks))
