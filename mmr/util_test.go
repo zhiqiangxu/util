@@ -7,7 +7,7 @@ import (
 	"gotest.tools/assert"
 )
 
-func TestMMR(t *testing.T) {
+func TestInclusionProof(t *testing.T) {
 	size := uint64(0b00111110)
 
 	completeSize := uint64(0b10000)
@@ -67,4 +67,29 @@ func TestMMR(t *testing.T) {
 	assert.Assert(t, err == nil)
 	err = mmr.VerifyInclusion(h1, mmr.Root(), h1Idx, mmr.Size(), proof)
 	assert.Assert(t, err == nil)
+
+	// test getMoutainPeaks
+	peaks := getMoutainPeaks(8)
+	assert.Assert(t, len(peaks) == 1 && peaks[0] == 15)
+
+}
+
+func TestConsistencyProof(t *testing.T) {
+	store, err := NewFileHashStore("/tmp/hs.log", 0)
+	assert.Assert(t, err == nil)
+	defer store.Close()
+
+	m := NewMMR(0, nil, NewHasher([]byte{1}), store)
+
+	n := uint64(7)
+	for i := uint64(0); i < n; i++ {
+		h := sha256.Sum256([]byte{byte(i + 1)})
+		m.Push(h, false)
+	}
+
+	cmp := []int{3, 2, 4, 1, 4, 3, 0}
+	for i := uint64(0); i < n; i++ {
+		proof, err := m.ConsistencyProof(uint64(i+1), n)
+		assert.Assert(t, err == nil && len(proof) == cmp[i])
+	}
 }

@@ -226,3 +226,163 @@ func (m *MMR) VerifyInclusion(leafHash, rootHash HashType, leafIdx, size uint64,
 	}
 	return
 }
+
+// FYI: https://tools.ietf.org/id/draft-ietf-trans-rfc6962-bis-27.html#rfc.section.2.1.4
+func (m *MMR) ConsistencyProof(l, n uint64) (hashes []HashType, err error) {
+	if m.store == nil {
+		err = ErrHashStoreNotAvailable
+		return
+	}
+
+	hashes, err = m.subproof(l, n, true)
+	return
+}
+
+func (m *MMR) subproof(l, n uint64, compeleteST bool) (hashes []HashType, err error) {
+
+	var hash HashType
+	offset := uint64(0)
+	for l < n {
+		k := leftPeakLeaf(n - 1)
+		if l <= k {
+			rightPeaks := getMoutainPeaks(n - k)
+			rightHashes := make([]HashType, len(rightPeaks), len(rightPeaks))
+			for i := range rightPeaks {
+				rightPeaks[i] = offset + 2*k - 1
+				rightHashes[i], err = m.store.GetHash(rightPeaks[i] - 1)
+				if err != nil {
+					return
+				}
+			}
+			baggedRightHash := bagPeaks(m.hasher, rightHashes)
+			hashes = append(hashes, baggedRightHash)
+			n = k
+		} else {
+			offset += k*2 - 1
+			hash, err = m.store.GetHash(offset - 1)
+			if err != nil {
+				return
+			}
+			hashes = append(hashes, hash)
+			l -= k
+			n -= k
+			compeleteST = false
+		}
+	}
+
+	if !compeleteST {
+		peaks := getMoutainPeaks(l)
+		if len(peaks) != 1 {
+			panic("bug in subproof")
+		}
+		hash, err = m.store.GetHash(peaks[0] + offset - 1)
+		if err != nil {
+			return
+		}
+		hashes = append(hashes, hash)
+	}
+
+	// reverse
+	// https://github.com/golang/go/wiki/SliceTricks#reversing
+	length := len(hashes)
+	for i := length/2 - 1; i >= 0; i-- {
+		opp := length - 1 - i
+		hashes[i], hashes[opp] = hashes[opp], hashes[i]
+	}
+	return
+}
+
+func (m *MMR) VerifyConsistency(oldTreeSize, newTreeSize uint64, oldRoot, newRoot HashType, proof []HashType) (err error) {
+	if oldTreeSize > newTreeSize {
+		err = fmt.Errorf("oldTreeSize > newTreeSize")
+		return
+	}
+
+	if oldTreeSize == newTreeSize {
+		return
+	}
+
+	if oldTreeSize == 0 {
+		return
+	}
+
+	first := oldTreeSize - 1
+	last := newTreeSize - 1
+
+	for first%2 == 1 {
+		first /= 2
+		last /= 2
+	}
+
+	lenp := len(proof)
+	if lenp == 0 {
+		err = errors.New("Wrong proof length")
+		return
+	}
+
+	pos := 0
+	var newHash, oldHash HashType
+
+	if first != 0 {
+		newHash = proof[pos]
+		oldHash = proof[pos]
+		pos += 1
+	} else {
+		newHash = oldRoot
+		oldHash = oldRoot
+	}
+
+	for first != 0 {
+		if first%2 == 1 {
+			if pos >= lenp {
+				err = errors.New("Wrong proof length")
+				return
+			}
+			// node is a right child: left sibling exists in both trees
+			nextNode := proof[pos]
+			pos += 1
+			oldHash = m.hasher.Node(nextNode, oldHash)
+			newHash = m.hasher.Node(nextNode, newHash)
+		} else if first < last {
+			if pos >= lenp {
+				err = errors.New("Wrong proof length")
+				return
+			}
+			// node is a left child: right sibling only exists in the newer tree
+			nextNode := proof[pos]
+			pos += 1
+			newHash = m.hasher.Node(nextNode, newHash)
+		}
+
+		first /= 2
+		last /= 2
+	}
+
+	for last != 0 {
+		if pos >= lenp {
+			err = errors.New("Wrong proof length")
+			return
+		}
+		nextNode := proof[pos]
+		pos += 1
+		newHash = m.hasher.Node(nextNode, newHash)
+		last /= 2
+	}
+
+	if newHash != newRoot {
+		err = errors.New(fmt.Sprintf(`Bad Merkle proof: second root hash does not match. 
+			Expected hash:%x, computed hash: %x`, newRoot, newHash))
+		return
+	} else if oldHash != oldRoot {
+		err = errors.New(fmt.Sprintf(`Inconsistency: first root hash does not match."
+			"Expected hash: %x, computed hash:%x`, oldRoot, oldHash))
+		return
+	}
+
+	if pos != lenp {
+		err = errors.New("Proof too long")
+		return
+	}
+
+	return
+}
