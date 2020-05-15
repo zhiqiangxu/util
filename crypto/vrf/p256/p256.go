@@ -15,7 +15,7 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/zhiqiangxu/util/vrf"
+	"github.com/zhiqiangxu/util/crypto/vrf"
 )
 
 // PublicKey for vrf
