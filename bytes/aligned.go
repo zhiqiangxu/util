@@ -20,6 +20,7 @@ func AlignedTo4(n uint32) []byte {
 // AlignedTo8 returns a byte slice aligned to 8 bytes boundary
 func AlignedTo8(n uint32) []byte {
 	buf := make([]byte, int(n)+Align8Mask)
+	// return buf
 	buf0Alignment := uint32(uintptr(unsafe.Pointer(&buf[0]))) & uint32(Align8Mask)
 	buf = buf[buf0Alignment : buf0Alignment+n]
 	return buf

@@ -26,3 +26,16 @@ func TestSignature(t *testing.T) {
 	ok, err = Verify(pub, msg, &sig2)
 	assert.Assert(t, err == nil && ok)
 }
+
+func BenchmarkSignature(b *testing.B) {
+	pri, pub, _ := GenerateKeypair()
+	msg := []byte("hello msg")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			sig, _ := Sign(pri, msg)
+
+			Verify(pub, msg, sig)
+		}
+
+	})
+}
