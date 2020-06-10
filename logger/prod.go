@@ -3,26 +3,30 @@ package logger
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
+	"unsafe"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 var (
-	prodLogger *zap.Logger
-	prodMU     sync.Mutex
+	prodLoggerPtr unsafe.Pointer
+	prodMU        sync.Mutex
 )
 
 // ProdInstance returns the instance for production environment
 func ProdInstance() *zap.Logger {
+	prodLogger := atomic.LoadPointer(&prodLoggerPtr)
 	if prodLogger != nil {
-		return prodLogger
+		return (*zap.Logger)(prodLogger)
 	}
 
 	prodMU.Lock()
 	defer prodMU.Unlock()
+	prodLogger = atomic.LoadPointer(&prodLoggerPtr)
 	if prodLogger != nil {
-		return prodLogger
+		return (*zap.Logger)(prodLogger)
 	}
 
 	encoderConfig := zap.NewProductionEncoderConfig()
@@ -40,11 +44,12 @@ func ProdInstance() *zap.Logger {
 		ErrorOutputPaths:  []string{"stderr"},
 	}
 
-	var err error
-	prodLogger, err = New(zconf)
+	prodLoggerType, err := New(zconf)
 	if err != nil {
 		panic(fmt.Sprintf("ProdInstance New:%v", err))
 	}
 
-	return prodLogger
+	atomic.StorePointer(&prodLoggerPtr, unsafe.Pointer(prodLoggerType))
+
+	return prodLoggerType
 }

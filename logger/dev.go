@@ -3,26 +3,30 @@ package logger
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
+	"unsafe"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 var (
-	devLogger *zap.Logger
-	devMU     sync.Mutex
+	devLoggerPtr unsafe.Pointer
+	devMU        sync.Mutex
 )
 
 // DevInstance returns the instance for develop environment
 func DevInstance() *zap.Logger {
+	devLogger := atomic.LoadPointer(&devLoggerPtr)
 	if devLogger != nil {
-		return devLogger
+		return (*zap.Logger)(devLogger)
 	}
 
 	devMU.Lock()
 	defer devMU.Unlock()
+	devLogger = atomic.LoadPointer(&devLoggerPtr)
 	if devLogger != nil {
-		return devLogger
+		return (*zap.Logger)(devLogger)
 	}
 
 	encoderConfig := zap.NewDevelopmentEncoderConfig()
@@ -38,11 +42,12 @@ func DevInstance() *zap.Logger {
 		ErrorOutputPaths:  []string{"stderr"},
 	}
 
-	var err error
-	devLogger, err = New(zconf)
+	devLoggerType, err := New(zconf)
 	if err != nil {
 		panic(fmt.Sprintf("DevInstance New:%v", err))
 	}
 
-	return devLogger
+	atomic.StorePointer(&devLoggerPtr, unsafe.Pointer(devLoggerType))
+
+	return devLoggerType
 }
