@@ -37,22 +37,24 @@ func TestInclusionProof(t *testing.T) {
 	assert.Assert(t, err == nil)
 	defer store.Close()
 
-	mmr := NewMMR(0, nil, NewHasher([]byte{1}), store)
+	mmr := NewMMR(0, nil, NewHasher([]byte{0}, []byte{1}), store)
 	h1 := sha256.Sum256([]byte{1})
-	mmr.Push(h1, false)
+	mmr.PushHash(h1, false)
 	h1Idx := mmr.Size() - 1
 
 	h2 := sha256.Sum256([]byte{2})
-	ap2 := mmr.Push(h2, true)
+	ap2 := mmr.PushHash(h2, true)
 	h2Idx := mmr.Size() - 1
 	assert.Assert(t, len(ap2) == proofLength(h2Idx, mmr.Size()) && ap2[0] == h1)
 
 	rootHash2 := mmr.Root()
 
 	h3 := sha256.Sum256([]byte{3})
-	ap3 := mmr.Push(h3, true)
+	ap3 := mmr.PushHash(h3, true)
 	h3Idx := mmr.Size() - 1
 	assert.Assert(t, len(ap3) == proofLength(h3Idx, mmr.Size()))
+
+	assert.Assert(t, ComputeRoot([]HashType{h1, h2, h3}) == mmr.Root())
 
 	// h2's proof is returned by Push
 	err = mmr.VerifyInclusion(h2, rootHash2, h2Idx, h2Idx+1, ap2)
@@ -79,12 +81,12 @@ func TestConsistencyProof(t *testing.T) {
 	assert.Assert(t, err == nil)
 	defer store.Close()
 
-	m := NewMMR(0, nil, NewHasher([]byte{1}), store)
+	m := NewMMR(0, nil, NewHasher([]byte{0}, []byte{1}), store)
 
 	n := uint64(7)
 	for i := uint64(0); i < n; i++ {
 		h := sha256.Sum256([]byte{byte(i + 1)})
-		m.Push(h, false)
+		m.PushHash(h, false)
 	}
 
 	cmp := []int{3, 2, 4, 1, 4, 3, 0}

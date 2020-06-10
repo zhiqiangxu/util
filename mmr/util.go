@@ -1,6 +1,8 @@
 package mmr
 
-import "math/bits"
+import (
+	"math/bits"
+)
 
 // minPeakHeight equals position of the lowest 1 bit
 // zero based height
@@ -89,4 +91,22 @@ func proofLength(index, size uint64) int {
 		lastNode /= 2
 	}
 	return length
+}
+
+var defaultHasher = NewHasher([]byte{0}, []byte{1})
+
+// ComputeRoot ...
+func ComputeRoot(hashes []HashType) (root HashType) {
+	if len(hashes) == 0 {
+		return
+	}
+
+	mmr := NewMMR(0, nil, defaultHasher, nil)
+	for _, hash := range hashes {
+		mmr.PushHash(hash, false)
+	}
+
+	root = mmr.Root()
+
+	return
 }

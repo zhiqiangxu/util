@@ -5,15 +5,6 @@ import (
 	"fmt"
 )
 
-// HashType can be replaced by https://github.com/zhiqiangxu/gg
-type HashType [32]byte
-
-// Hasher for mmr
-type Hasher interface {
-	Empty() HashType
-	Node(left, right HashType) HashType
-}
-
 // HashStore for store sequential hashes and fetch by index
 type HashStore interface {
 	Append(hashes []HashType) error
@@ -36,6 +27,9 @@ var unknownHash HashType
 
 // NewMMR is ctor for MMR
 func NewMMR(size uint64, peaks []HashType, hasher Hasher, store HashStore) *MMR {
+	if hasher == nil {
+		hasher = defaultHasher
+	}
 	m := &MMR{hasher: hasher, store: store}
 	m.update(size, peaks)
 	return m
@@ -56,8 +50,14 @@ func (m *MMR) Size() uint64 {
 	return m.size
 }
 
+// Push a leaf
+func (m *MMR) Push(leaf []byte, wantAP bool) []HashType {
+	h := m.hasher.Leaf(leaf)
+	return m.PushHash(h, wantAP)
+}
+
 // Push a hash
-func (m *MMR) Push(h HashType, wantAP bool) (ap []HashType) {
+func (m *MMR) PushHash(h HashType, wantAP bool) (ap []HashType) {
 	psize := len(m.peaks)
 
 	if wantAP {
