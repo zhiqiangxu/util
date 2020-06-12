@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -62,4 +63,21 @@ func RunWithRetry(retryCnt int, backoff uint64, f func() (bool, error)) (err err
 		time.Sleep(sleepTime)
 	}
 	return
+}
+
+// RunWithCancel for run a job with cancel-ability
+func RunWithCancel(ctx context.Context, f, cancel func()) {
+	var wg sync.WaitGroup
+
+	doneCh := make(chan struct{})
+	GoFunc(&wg, func() {
+		f()
+		close(doneCh)
+	})
+
+	select {
+	case <-ctx.Done():
+		cancel()
+	case <-doneCh:
+	}
 }
