@@ -15,6 +15,36 @@ func TestUUID(t *testing.T) {
 		assert.Assert(t, FastRandN(uint32(i)) < uint32(i))
 	}
 
+	// test empty interface
+	var i interface{}
+
+	type test struct {
+		a int
+		b string
+	}
+
+	var s test
+	s.a = 1
+	s.b = "1"
+
+	i = s
+	s.a = 2
+	s.b = "2"
+	assert.Assert(t, i.(test).a == 1)
+
+	var i2 interface{}
+
+	i2 = i
+
+	i = s
+	s.a = 3
+	s.b = "3"
+
+	assert.Assert(t, i.(test).a == 2 && i2.(test).a == 1)
+
+	// // this will error
+	// i2.(test).a = 3
+
 }
 
 func BenchmarkFastRand(b *testing.B) {
