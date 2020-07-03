@@ -8,6 +8,7 @@ import (
 )
 
 func TestUUID(t *testing.T) {
+
 	assert.Assert(t, PoorManUUID(true)%2 == 1)
 	assert.Assert(t, PoorManUUID(false)%2 == 0)
 	assert.Assert(t, FastRandN(1) == 0)
@@ -44,6 +45,13 @@ func TestUUID(t *testing.T) {
 
 	// // this will error
 	// i2.(test).a = 3
+
+	// test slice
+	{
+		encID := make([]byte, 0, 10)
+		_ = append(encID, 'a')
+		assert.Assert(t, len(encID) == 0 && cap(encID) == 10)
+	}
 
 }
 
