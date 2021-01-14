@@ -2,6 +2,8 @@ package mmr
 
 import (
 	"crypto/sha256"
+	"math"
+	"math/bits"
 	"testing"
 
 	"gotest.tools/assert"
@@ -94,4 +96,12 @@ func TestConsistencyProof(t *testing.T) {
 		proof, err := m.ConsistencyProof(uint64(i+1), n)
 		assert.Assert(t, err == nil && len(proof) == cmp[i])
 	}
+}
+
+func TestBits(t *testing.T) {
+	assert.Assert(t, bits.Len32(256) == 9)
+	assert.Assert(t, bits.Len32(0) == 0)
+	assert.Assert(t, bits.Len32(1) == 1)
+	assert.Assert(t, math.Ceil(math.Log2(float64(256))) == 8)
+	assert.Assert(t, 1<<8 == 256)
 }
