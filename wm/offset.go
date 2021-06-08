@@ -80,10 +80,10 @@ func (o *Offset) process() {
 
 	}
 	notifyUntil := func(doneOffset int64) {
-		if o.heap.Size() == 0 {
-			return
-		}
 		for {
+			if o.heap.Size() == 0 {
+				return
+			}
 			minOffset := o.heap.FindMin()
 			if minOffset <= doneOffset {
 				for _, w := range waits[minOffset] {
