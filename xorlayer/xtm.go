@@ -40,7 +40,7 @@ func NewXTM(k, h int, id NodeID, cb Callback) *XTM {
 	for i := range buckets {
 		buckets[i] = newBucket()
 	}
-	x := &XTM{k: k, theta: -1, id: id, buckets: buckets, cb: cb}
+	x := &XTM{k: k, h: h, theta: -1, id: id, buckets: buckets, cb: cb}
 	return x
 }
 
@@ -118,12 +118,12 @@ func (x *XTM) addNeighbourLocked(n NodeID, cookie uint64) (unlocked bool) {
 		// increment theta if necessary
 
 		for {
-			if x.buckets[x.theta+1].size() >= x.k {
+			if x.buckets[x.theta+1].size() >= (x.k + x.h) {
 				total := 0
 				for j := x.theta + 2; j < bitSize; j++ {
 					total += x.buckets[j].size()
 				}
-				if total >= x.k-1 {
+				if total >= (x.k + x.h) {
 					x.theta++
 					x.buckets[x.theta].reduceTo(x.k + x.h)
 				} else {
@@ -217,6 +217,7 @@ func (x *XTM) KClosest(target NodeID) (ns []NodeID) {
 				return
 			}
 		}
+		return
 	}
 
 	ns = x.buckets[i].appendXClosest(ns, x.k, target)
