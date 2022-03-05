@@ -7,6 +7,7 @@ func Partition(n int) *big.Int {
 		panic("invalid input")
 	}
 
+	// Euler's method
 	var current, next *Polynomial
 	for i := 1; i <= n; i++ {
 		coefficients := make([]*big.Int, n+1)
