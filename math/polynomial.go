@@ -8,7 +8,12 @@ import (
 
 // Polynomial is used for educational purpose only, not optimized for sparse polynomials
 type Polynomial struct {
+	maxOrder     int
 	coefficients []*big.Int
+}
+
+func NewPolynomialWithMaxOrder(maxOrder int, coefficients []*big.Int) *Polynomial {
+	return &Polynomial{maxOrder: maxOrder, coefficients: coefficients}
 }
 
 func NewPolynomial(coefficients []*big.Int) *Polynomial {
@@ -43,9 +48,15 @@ func (p1 *Polynomial) Mul(p2 *Polynomial) *Polynomial {
 		return &Polynomial{}
 	}
 
+	if p1.maxOrder > 0 && dim > p1.maxOrder+1 {
+		dim = p1.maxOrder + 1
+	}
 	coefficients := make([]*big.Int, dim)
 	for i, c1 := range p1.coefficients {
 		for j, c2 := range p2.coefficients {
+			if p1.maxOrder > 0 && p1.maxOrder < i+j {
+				break
+			}
 			c3 := coefficients[i+j]
 			if c3 == nil {
 				c3 = big.NewInt(0)
@@ -55,5 +66,5 @@ func (p1 *Polynomial) Mul(p2 *Polynomial) *Polynomial {
 		}
 	}
 
-	return &Polynomial{coefficients: coefficients}
+	return &Polynomial{maxOrder: p1.maxOrder, coefficients: coefficients}
 }

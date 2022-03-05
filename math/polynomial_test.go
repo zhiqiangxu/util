@@ -3,6 +3,8 @@ package math
 import (
 	"math/big"
 	"testing"
+
+	"gotest.tools/assert"
 )
 
 func intArray2BigArray(coefficients []int) []*big.Int {
@@ -23,8 +25,6 @@ func TestPolynomial(t *testing.T) {
 	p5 := NewPolynomial(intArray2BigArray([]int{1, 0, 0, 0, 0, 1}))
 
 	p := p1.Mul(p2).Mul(p3).Mul(p4).Mul(p5)
-	if p.coefficients[5].Uint64() != 7 {
-		t.Fail()
-	}
+	assert.Equal(t, p.coefficients[5].Uint64(), uint64(7))
 	t.Log(p)
 }

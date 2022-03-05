@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"gopkg.in/dgrijalva/jwt-go.v3"
+	"github.com/dgrijalva/jwt-go"
 )
 
 // JWT is both signer and verifier

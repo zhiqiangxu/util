@@ -7,7 +7,7 @@ import (
 
 	"reflect"
 
-	"gopkg.in/dgrijalva/jwt-go.v3"
+	"github.com/dgrijalva/jwt-go"
 	"gotest.tools/assert"
 )
 
