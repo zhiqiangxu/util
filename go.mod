@@ -13,6 +13,6 @@ require (
 	go.uber.org/zap v1.13.0
 	golang.org/x/exp v0.0.0-20200320212757-167ffe94c325
 	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
-	golang.org/x/sys v0.0.0-20191128015809-6d18c012aee9
+	golang.org/x/sys v0.0.0-20220627191245-f75cf1eec38b
 	gotest.tools v2.2.0+incompatible
 )
