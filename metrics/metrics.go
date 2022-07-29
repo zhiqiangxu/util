@@ -28,12 +28,12 @@ func RegisterCounter(name string, labels []string) kitmetrics.Counter {
 	cl.Lock()
 	defer cl.Unlock()
 
-	counter, ok := counterMap[name]
+	_, ok := counterMap[name]
 	if ok {
 		panic("registered the same counter twice")
 	}
 
-	counter = kitprometheus.NewCounterFrom(stdprometheus.CounterOpts{Name: name}, labels)
+	counter := kitprometheus.NewCounterFrom(stdprometheus.CounterOpts{Name: name}, labels)
 	counterMap[name] = counter
 	return counter
 }
@@ -57,12 +57,12 @@ func RegisterGauge(name string, labels []string) kitmetrics.Gauge {
 	gl.Lock()
 	defer gl.Unlock()
 
-	gauge, ok := gaugeMap[name]
+	_, ok := gaugeMap[name]
 	if ok {
 		panic("registered the same gauge twice")
 	}
 
-	gauge = kitprometheus.NewGaugeFrom(stdprometheus.GaugeOpts{Name: name}, labels)
+	gauge := kitprometheus.NewGaugeFrom(stdprometheus.GaugeOpts{Name: name}, labels)
 	gaugeMap[name] = gauge
 	return gauge
 }
@@ -81,17 +81,23 @@ func GetGauge(name string) kitmetrics.Gauge {
 
 }
 
+var Objectives map[float64]float64
+
 // RegisterHist registers a hist
 func RegisterHist(name string, labels []string) kitmetrics.Histogram {
 	hl.Lock()
 	defer hl.Unlock()
 
-	hist, ok := histMap[name]
+	_, ok := histMap[name]
 	if ok {
 		panic("registered the same gauge twice")
 	}
 
-	hist = kitprometheus.NewSummaryFrom(stdprometheus.SummaryOpts{Name: name, Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}}, labels)
+	objectives := Objectives
+	if objectives == nil {
+		objectives = map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
+	}
+	hist := kitprometheus.NewSummaryFrom(stdprometheus.SummaryOpts{Name: name, Objectives: objectives}, labels)
 	histMap[name] = hist
 	return hist
 }
