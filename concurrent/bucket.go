@@ -18,3 +18,9 @@ func (b *Bucket[K, E]) Element(key K) E {
 	idx := b.hash(key)
 	return b.elements[int(idx)%len(b.elements)]
 }
+
+func (b *Bucket[K, E]) Range(fn func(i int, e E)) {
+	for i := 0; i < len(b.elements); i++ {
+		fn(i, b.elements[i])
+	}
+}
