@@ -15,7 +15,7 @@ type Result struct {
 	I int
 }
 
-func First[R any](ctx context.Context, workers int, handleFunc func(context.Context, int) (R, error), cd time.Duration) (r R, i int, err error) {
+func First[R any](ctx context.Context, workers int, handleFunc func(ctx context.Context, workerIdx int) (R, error), cd time.Duration) (r R, i int, err error) {
 	if workers == 0 {
 		err = fmt.Errorf("workers == 0")
 		return
@@ -85,7 +85,7 @@ type subTask struct {
 	from, to int
 }
 
-func All(ctx context.Context, total, unit, workers int, handleFunc func(context.Context, int, int, int) error, dispatchCB func(int, int), retry int, cd time.Duration) {
+func All(ctx context.Context, total, unit, workers int, handleFunc func(ctx context.Context, workerIdx int, from int, to int) error, dispatchCB func(int, int), retry int, cd time.Duration) {
 	if workers == 0 {
 		panic("workers == 0")
 	}
