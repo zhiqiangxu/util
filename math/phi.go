@@ -1,5 +1,6 @@
 package math
 
+// Phi returns # of coprime integers of n
 func Phi(n int) int {
 	if n == 0 {
 		panic("invalid input")
